@@ -960,6 +960,244 @@ function CreateProfile({ userId, onDone }) {
   );
 }
 
+// ---------------- STORIES ----------------
+function StoriesBar({ profile }) {
+  const [groups, setGroups] = useState([]); // [{ profile, stories: [], allViewed }]
+  const [myStories, setMyStories] = useState([]);
+  const [viewerData, setViewerData] = useState(null); // { groups, startIndex }
+  const [showCreate, setShowCreate] = useState(false);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function load() {
+    const { data: stories } = await supabase
+      .from("stories")
+      .select("*, profiles(name, username, photos)")
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: true });
+
+    const { data: views } = await supabase.from("story_views").select("story_id").eq("viewer_id", profile.id);
+    const viewedIds = new Set((views || []).map((v) => v.story_id));
+
+    const byUser = {};
+    (stories || []).forEach((s) => {
+      if (!byUser[s.user_id]) byUser[s.user_id] = { profile: s.profiles, userId: s.user_id, stories: [] };
+      byUser[s.user_id].stories.push(s);
+    });
+
+    const mine = byUser[profile.id]?.stories || [];
+    setMyStories(mine);
+
+    const others = Object.values(byUser)
+      .filter((g) => g.userId !== profile.id)
+      .map((g) => ({ ...g, allViewed: g.stories.every((s) => viewedIds.has(s.id)) }));
+    setGroups(others);
+  }
+
+  function openViewer(startIndex, includeMine) {
+    const all = includeMine ? [{ profile, userId: profile.id, stories: myStories }, ...groups] : groups;
+    setViewerData({ groups: all, startIndex });
+  }
+
+  async function handleUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      alert("File too big — keep it under 20MB.");
+      return;
+    }
+    const mediaType = file.type.startsWith("video") ? "video" : "image";
+    const ext = file.name.split(".").pop();
+    const path = `${profile.id}/${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from("stories").upload(path, file);
+    if (!error) {
+      const { data } = supabase.storage.from("stories").getPublicUrl(path);
+      await supabase.from("stories").insert({ user_id: profile.id, media_url: data.publicUrl, media_type: mediaType });
+      load();
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    setShowCreate(false);
+  }
+
+  return (
+    <div className="mb-5">
+      {viewerData && (
+        <StoryViewer
+          data={viewerData}
+          myId={profile.id}
+          onClose={() => {
+            setViewerData(null);
+            load();
+          }}
+        />
+      )}
+      <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" />
+
+      <div className="flex gap-3.5 overflow-x-auto pb-1 -mx-1 px-1">
+        <button
+          onClick={() => (myStories.length > 0 ? openViewer(0, true) : fileInputRef.current?.click())}
+          className="flex flex-col items-center gap-1.5 shrink-0"
+        >
+          <div className="relative w-14 h-14">
+            <div
+              className={`w-14 h-14 rounded-full p-[2px] ${
+                myStories.length > 0 ? "bg-gradient-to-br from-[#FF4D6D] to-[#FFB84D]" : "bg-white/10"
+              }`}
+            >
+              <div className="w-full h-full rounded-full overflow-hidden border-2 border-[#1B0F23]">
+                <Avatar profile={profile} textSize="text-lg" />
+              </div>
+            </div>
+            {myStories.length === 0 && (
+              <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#FF4D6D] flex items-center justify-center border-2 border-[#1B0F23]">
+                <Plus size={11} className="text-white" />
+              </div>
+            )}
+          </div>
+          <span className="text-[10px] text-[#B8A9C0]">Your story</span>
+        </button>
+
+        {groups.map((g, i) => (
+          <button
+            key={g.userId}
+            onClick={() => openViewer(myStories.length > 0 ? i + 1 : i, myStories.length > 0)}
+            className="flex flex-col items-center gap-1.5 shrink-0"
+          >
+            <div
+              className={`w-14 h-14 rounded-full p-[2px] ${
+                g.allViewed ? "bg-white/10" : "bg-gradient-to-br from-[#FF4D6D] to-[#FFB84D]"
+              }`}
+            >
+              <div className="w-full h-full rounded-full overflow-hidden border-2 border-[#1B0F23]">
+                <Avatar profile={g.profile} textSize="text-lg" />
+              </div>
+            </div>
+            <span className="text-[10px] text-[#B8A9C0] max-w-[56px] truncate">{g.profile?.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StoryViewer({ data, myId, onClose }) {
+  const [groupIndex, setGroupIndex] = useState(data.startIndex);
+  const [storyIndex, setStoryIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const timerRef = useRef(null);
+  const startRef = useRef(null);
+  const videoRef = useRef(null);
+
+  const group = data.groups[groupIndex];
+  const story = group?.stories[storyIndex];
+  const DURATION = 5000;
+
+  useEffect(() => {
+    if (!story) return;
+    setProgress(0);
+    markViewed(story.id);
+
+    if (story.media_type === "image") {
+      startRef.current = Date.now();
+      timerRef.current = setInterval(() => {
+        const pct = Math.min(100, ((Date.now() - startRef.current) / DURATION) * 100);
+        setProgress(pct);
+        if (pct >= 100) next();
+      }, 50);
+    }
+    return () => clearInterval(timerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupIndex, storyIndex]);
+
+  async function markViewed(storyId) {
+    if (group.userId === myId) return;
+    await supabase.from("story_views").insert({ story_id: storyId, viewer_id: myId }).select().maybeSingle();
+  }
+
+  function next() {
+    clearInterval(timerRef.current);
+    if (storyIndex < group.stories.length - 1) {
+      setStoryIndex((i) => i + 1);
+    } else if (groupIndex < data.groups.length - 1) {
+      setGroupIndex((i) => i + 1);
+      setStoryIndex(0);
+    } else {
+      onClose();
+    }
+  }
+
+  function prev() {
+    clearInterval(timerRef.current);
+    if (storyIndex > 0) {
+      setStoryIndex((i) => i - 1);
+    } else if (groupIndex > 0) {
+      setGroupIndex((i) => i - 1);
+      setStoryIndex(0);
+    }
+  }
+
+  function handleVideoProgress() {
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    setProgress((v.currentTime / v.duration) * 100);
+  }
+
+  if (!story) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black z-40 flex items-center justify-center">
+      <div className="w-full h-full max-w-md relative flex flex-col">
+        <div className="flex gap-1 px-3 pt-3">
+          {group.stories.map((_, i) => (
+            <div key={i} className="flex-1 h-0.5 bg-white/25 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-white"
+                style={{
+                  width: i < storyIndex ? "100%" : i === storyIndex ? `${progress}%` : "0%",
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2.5 px-3 pt-3">
+          <div className="w-8 h-8 rounded-full overflow-hidden">
+            <Avatar profile={group.profile} textSize="text-sm" />
+          </div>
+          <span className="text-white text-sm font-medium">{group.profile?.name}</span>
+          <span className="text-white/60 text-xs">{timeAgo(story.created_at)}</span>
+          <button onClick={onClose} className="ml-auto text-white/80 p-1">
+            <X size={22} />
+          </button>
+        </div>
+
+        <div className="flex-1 relative mt-3">
+          <div className="absolute inset-0 flex">
+            <button className="w-1/3 h-full" onClick={prev} />
+            <button className="w-2/3 h-full" onClick={next} />
+          </div>
+          {story.media_type === "video" ? (
+            <video
+              ref={videoRef}
+              src={story.media_url}
+              autoPlay
+              playsInline
+              onTimeUpdate={handleVideoProgress}
+              onEnded={next}
+              className="w-full h-full object-contain"
+            />
+          ) : (
+            <img src={story.media_url} alt="" className="w-full h-full object-contain" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------------- FEED ----------------
 function FeedTab({ profile }) {
   const [posts, setPosts] = useState([]);
@@ -1036,6 +1274,8 @@ function FeedTab({ profile }) {
           <Plus size={18} />
         </button>
       </div>
+
+      <StoriesBar profile={profile} />
 
       {loading && <p className="text-center text-[#B8A9C0] text-sm py-8">loading feed...</p>}
 
