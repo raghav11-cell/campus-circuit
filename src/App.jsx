@@ -14,6 +14,10 @@ import {
   Plus,
   Check,
   ShieldCheck,
+  Settings,
+  Grid3x3,
+  Flag,
+  Video,
 } from "lucide-react";
 
 const INTENTS = [
@@ -60,7 +64,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("browse");
+  const [tab, setTab] = useState("feed");
   const [activeChat, setActiveChat] = useState(null);
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
@@ -147,6 +151,7 @@ export default function App() {
       </header>
 
       <main className="flex-1 overflow-y-auto max-w-md mx-auto w-full">
+        {tab === "feed" && <FeedTab profile={profile} />}
         {tab === "browse" && <BrowseTab profile={profile} />}
         {tab === "matches" && (
           <MatchesTab
@@ -166,6 +171,7 @@ export default function App() {
       {tab !== "chatroom" && (
         <nav className="flex border-t border-white/5 bg-[#1B0F23] max-w-md mx-auto w-full">
           {[
+            { id: "feed", icon: Grid3x3, label: "Feed" },
             { id: "browse", icon: Heart, label: "Browse" },
             { id: "matches", icon: MessageCircle, label: "Matches" },
             { id: "profile", icon: User, label: "You" },
@@ -824,6 +830,304 @@ function CreateProfile({ userId, onDone }) {
   );
 }
 
+// ---------------- FEED ----------------
+function FeedTab({ profile }) {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [myLikes, setMyLikes] = useState({});
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supabase
+      .from("posts")
+      .select("*, profiles(name, username, photos)")
+      .order("created_at", { ascending: false });
+
+    const { data: allLikes } = await supabase.from("post_likes").select("post_id, user_id");
+    const counts = {};
+    (allLikes || []).forEach((l) => {
+      counts[l.post_id] = (counts[l.post_id] || 0) + 1;
+    });
+    const withCounts = (data || []).map((p) => ({ ...p, like_count: counts[p.id] || 0 }));
+    setPosts(withCounts);
+
+    const map = {};
+    (allLikes || []).filter((l) => l.user_id === profile.id).forEach((l) => (map[l.post_id] = true));
+    setMyLikes(map);
+    setLoading(false);
+  }
+
+  async function toggleLike(post) {
+    const liked = myLikes[post.id];
+    setMyLikes((prev) => ({ ...prev, [post.id]: !liked }));
+    setPosts((prev) =>
+      prev.map((p) => (p.id === post.id ? { ...p, like_count: (p.like_count || 0) + (liked ? -1 : 1) } : p))
+    );
+    if (liked) {
+      await supabase.from("post_likes").delete().eq("post_id", post.id).eq("user_id", profile.id);
+    } else {
+      await supabase.from("post_likes").insert({ post_id: post.id, user_id: profile.id });
+    }
+  }
+
+  return (
+    <div className="p-5">
+      {showCreate && (
+        <CreatePost
+          userId={profile.id}
+          onClose={() => setShowCreate(false)}
+          onPosted={() => {
+            setShowCreate(false);
+            load();
+          }}
+        />
+      )}
+      {reportTarget && (
+        <ReportModal
+          reporterId={profile.id}
+          targetType="post"
+          targetId={reportTarget}
+          onClose={() => setReportTarget(null)}
+        />
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="font-display text-2xl">Feed</h1>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="w-9 h-9 rounded-full bg-[#FF4D6D] flex items-center justify-center text-white"
+        >
+          <Plus size={18} />
+        </button>
+      </div>
+
+      {loading && <p className="text-center text-[#B8A9C0] text-sm py-8">loading feed...</p>}
+
+      {!loading && posts.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+          <Grid3x3 size={32} className="text-[#6B5B73]" />
+          <p className="text-[#B8A9C0] text-sm">No posts yet. Be the first to share something.</p>
+        </div>
+      )}
+
+      <div className="space-y-5">
+        {posts.map((post) => (
+          <div key={post.id} className="bg-[#2A1830] rounded-2xl overflow-hidden border border-white/5">
+            <div className="flex items-center gap-2.5 p-3">
+              <div className="w-8 h-8 rounded-full overflow-hidden shrink-0">
+                <Avatar profile={post.profiles} textSize="text-sm" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{post.profiles?.name}</p>
+                <p className="text-[11px] text-[#6B5B73]">@{post.profiles?.username}</p>
+              </div>
+              <button onClick={() => setReportTarget(post.id)} className="text-[#6B5B73] p-1">
+                <Flag size={15} />
+              </button>
+            </div>
+
+            <div className="bg-black">
+              {post.media_type === "video" ? (
+                <video src={post.media_url} controls className="w-full max-h-[480px] object-contain" />
+              ) : (
+                <img src={post.media_url} alt="" className="w-full max-h-[480px] object-cover" />
+              )}
+            </div>
+
+            <div className="p-3">
+              <button onClick={() => toggleLike(post)} className="flex items-center gap-1.5">
+                <Heart
+                  size={19}
+                  className={myLikes[post.id] ? "text-[#FF4D6D]" : "text-[#B8A9C0]"}
+                  fill={myLikes[post.id] ? "#FF4D6D" : "none"}
+                />
+                <span className="text-xs text-[#B8A9C0]">{post.like_count || 0}</span>
+              </button>
+              {post.caption && <p className="text-sm mt-2">{post.caption}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CreatePost({ userId, onClose, onPosted }) {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [mediaType, setMediaType] = useState(null);
+  const [caption, setCaption] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fileInputRef = useRef(null);
+  const MAX_MB = 20;
+
+  function handlePick(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > MAX_MB * 1024 * 1024) {
+      setError(`File too big — keep it under ${MAX_MB}MB.`);
+      return;
+    }
+    setError("");
+    setFile(f);
+    setMediaType(f.type.startsWith("video") ? "video" : "image");
+    setPreview(URL.createObjectURL(f));
+  }
+
+  async function submit() {
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    const ext = file.name.split(".").pop();
+    const path = `${userId}/${crypto.randomUUID()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("posts").upload(path, file);
+    if (upErr) {
+      setBusy(false);
+      setError(upErr.message);
+      return;
+    }
+    const { data } = supabase.storage.from("posts").getPublicUrl(path);
+    const { error: insErr } = await supabase.from("posts").insert({
+      user_id: userId,
+      media_url: data.publicUrl,
+      media_type: mediaType,
+      caption: caption.trim() || null,
+    });
+    setBusy(false);
+    if (insErr) {
+      setError(insErr.message);
+      return;
+    }
+    onPosted();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-30 flex items-end sm:items-center justify-center px-4">
+      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-md p-5 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display text-xl">New post</h2>
+          <button onClick={onClose} className="text-[#B8A9C0]">
+            <X size={20} />
+          </button>
+        </div>
+
+        {!preview && (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full aspect-square rounded-xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-2 text-[#6B5B73]"
+          >
+            <div className="flex gap-3">
+              <Camera size={22} />
+              <Video size={22} />
+            </div>
+            <span className="text-xs">Tap to choose a photo or video</span>
+            <span className="text-[10px] text-[#6B5B73]">Max {MAX_MB}MB</span>
+          </button>
+        )}
+
+        {preview && (
+          <div className="rounded-xl overflow-hidden bg-black relative">
+            {mediaType === "video" ? (
+              <video src={preview} controls className="w-full max-h-72 object-contain" />
+            ) : (
+              <img src={preview} alt="" className="w-full max-h-72 object-cover" />
+            )}
+            <button
+              onClick={() => {
+                setFile(null);
+                setPreview(null);
+              }}
+              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center"
+            >
+              <X size={15} className="text-white" />
+            </button>
+          </div>
+        )}
+
+        <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handlePick} className="hidden" />
+
+        <textarea
+          value={caption}
+          onChange={(e) => setCaption(e.target.value)}
+          placeholder="Write a caption (optional)..."
+          rows={2}
+          className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 mt-4 outline-none focus:border-[#FF4D6D] resize-none text-sm"
+        />
+
+        {error && <p className="text-[#FF4D6D] text-xs mt-2">{error}</p>}
+
+        <button
+          disabled={!file || busy}
+          onClick={submit}
+          className="w-full py-3 rounded-full bg-[#FF4D6D] text-white text-sm font-medium disabled:opacity-30 mt-4"
+        >
+          {busy ? "Posting..." : "Share post"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReportModal({ reporterId, targetType, targetId, onClose }) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    await supabase.from("reports").insert({
+      reporter_id: reporterId,
+      target_type: targetType,
+      target_id: String(targetId),
+      reason: reason.trim() || null,
+    });
+    setBusy(false);
+    setDone(true);
+    setTimeout(onClose, 1200);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-30 flex items-center justify-center px-6">
+      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-xs p-5">
+        {done ? (
+          <p className="text-sm text-[#4DD4C0] text-center py-4">Report submitted. Thank you.</p>
+        ) : (
+          <>
+            <h3 className="font-display text-lg mb-1">Report this {targetType}</h3>
+            <p className="text-xs text-[#B8A9C0] mb-3">Tell us what's wrong — this stays confidential.</p>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              placeholder="What's happening..."
+              className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#FF4D6D] resize-none"
+            />
+            <div className="flex gap-2 mt-4">
+              <button onClick={onClose} className="flex-1 py-2.5 rounded-full border border-white/10 text-[#B8A9C0] text-sm">
+                Cancel
+              </button>
+              <button
+                disabled={busy}
+                onClick={submit}
+                className="flex-1 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm disabled:opacity-50"
+              >
+                {busy ? "Sending..." : "Submit"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------------- BROWSE ----------------
 function BrowseTab({ profile }) {
   const [pool, setPool] = useState([]);
@@ -1038,60 +1342,534 @@ function MatchesTab({ myId, onOpen }) {
 }
 
 // ---------------- PROFILE ----------------
-function ProfileTab({ profile, onLogout }) {
+function ProfileTab({ profile, onLogout, onUpdate }) {
+  const [matchCount, setMatchCount] = useState(null);
+  const [followerCount, setFollowerCount] = useState(null);
+  const [followingCount, setFollowingCount] = useState(null);
+  const [view, setView] = useState("main"); // main | edit | settings | followers | following
+  const [lightbox, setLightbox] = useState(null);
+
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  async function loadStats() {
+    const { count: mCount } = await supabase
+      .from("matches")
+      .select("*", { count: "exact", head: true })
+      .or(`user1_id.eq.${profile.id},user2_id.eq.${profile.id}`);
+    setMatchCount(mCount ?? 0);
+
+    const { count: followers } = await supabase
+      .from("likes")
+      .select("*", { count: "exact", head: true })
+      .eq("liked_id", profile.id);
+    setFollowerCount(followers ?? 0);
+
+    const { count: following } = await supabase
+      .from("likes")
+      .select("*", { count: "exact", head: true })
+      .eq("liker_id", profile.id);
+    setFollowingCount(following ?? 0);
+  }
+
+  if (view === "edit") {
+    return (
+      <EditProfile
+        profile={profile}
+        onDone={() => {
+          onUpdate();
+          setView("main");
+        }}
+        onCancel={() => setView("main")}
+      />
+    );
+  }
+
+  if (view === "settings") {
+    return <SettingsScreen onBack={() => setView("main")} onLogout={onLogout} />;
+  }
+
+  if (view === "followers" || view === "following") {
+    return (
+      <FollowListScreen
+        myId={profile.id}
+        mode={view}
+        onBack={() => setView("main")}
+      />
+    );
+  }
+
+  const photos = profile.photos || [];
+
   return (
     <div className="p-5">
-      <div className="bg-[#2A1830] rounded-2xl overflow-hidden border border-white/5">
-        <div className="aspect-[4/3]">
-          <Avatar profile={profile} />
+      {lightbox && (
+        <div
+          className="fixed inset-0 bg-black/90 z-30 flex items-center justify-center px-4"
+          onClick={() => setLightbox(null)}
+        >
+          <img src={lightbox} alt="" className="max-h-[80vh] max-w-full rounded-xl object-contain" />
         </div>
-        <div className="p-5">
-          <h2 className="font-display text-2xl">
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="font-display text-2xl">Your profile</h1>
+        <button
+          onClick={() => setView("settings")}
+          className="w-9 h-9 rounded-full bg-[#2A1830] flex items-center justify-center text-[#B8A9C0]"
+        >
+          <Settings size={17} />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-4 mb-5">
+        <div className="w-20 h-20 rounded-full overflow-hidden shrink-0 border-2 border-[#FF4D6D]/40">
+          <Avatar profile={profile} textSize="text-2xl" />
+        </div>
+        <div className="flex-1">
+          <h2 className="font-display text-xl leading-tight">
             {profile.name}
             {profile.age ? `, ${profile.age}` : ""}
           </h2>
           <p className="text-xs text-[#B8A9C0] mt-0.5">
             @{profile.username} · {profile.college}
           </p>
-          {(profile.prompts || []).map((p, i) => (
-            <div key={i} className="mt-3">
-              <p className="text-[11px] text-[#6B5B73]">{p.q}</p>
-              <p className="text-sm mt-0.5">{p.a}</p>
-            </div>
-          ))}
-          <div className="mt-4">
-            <p className="text-[11px] text-[#6B5B73] mb-2">you're looking for</p>
-            <div className="flex flex-wrap gap-1.5">
-              {(profile.intents || []).map((id) => {
-                const meta = intentMeta(id);
-                return (
-                  <span
-                    key={id}
-                    className="text-xs px-2.5 py-1 rounded-full"
-                    style={{ backgroundColor: meta.color + "22", color: meta.color }}
-                  >
-                    {meta.label}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-2.5 mb-5">
+        <button
+          onClick={() => setView("followers")}
+          className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
+        >
+          <p className="font-display text-xl">{followerCount === null ? "—" : followerCount}</p>
+          <p className="text-[11px] text-[#6B5B73] mt-0.5">Followers</p>
+        </button>
+        <button
+          onClick={() => setView("following")}
+          className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
+        >
+          <p className="font-display text-xl">{followingCount === null ? "—" : followingCount}</p>
+          <p className="text-[11px] text-[#6B5B73] mt-0.5">Following</p>
+        </button>
+        <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
+          <p className="font-display text-xl">{matchCount === null ? "—" : matchCount}</p>
+          <p className="text-[11px] text-[#6B5B73] mt-0.5">Matches</p>
+        </div>
+        <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
+          <p className="font-display text-xl">{photos.length}</p>
+          <p className="text-[11px] text-[#6B5B73] mt-0.5">Photos</p>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-[#6B5B73] -mt-3 mb-5 px-1">
+        Only visible to you — no one else can see who likes you until you match.
+      </p>
+
       <button
-        onClick={onLogout}
-        className="w-full mt-4 py-3 rounded-full border border-white/10 text-[#B8A9C0] text-sm flex items-center justify-center gap-2"
+        onClick={() => setView("edit")}
+        className="w-full py-3 rounded-full bg-[#FF4D6D] text-white text-sm font-medium mb-5"
       >
-        <LogOut size={16} /> Log out
+        Edit Profile
       </button>
 
-      <div className="flex items-start gap-2 mt-4 px-1">
+      {(profile.prompts || []).length > 0 && (
+        <div className="space-y-3 mb-5">
+          {profile.prompts.map((p, i) => (
+            <div key={i} className="bg-[#2A1830] rounded-xl p-4 border border-white/5">
+              <p className="text-[11px] text-[#FFB84D]">{p.q}</p>
+              <p className="text-sm mt-1">{p.a}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mb-5">
+        <p className="text-[11px] text-[#6B5B73] mb-2">you're looking for</p>
+        <div className="flex flex-wrap gap-1.5">
+          {(profile.intents || []).map((id) => {
+            const meta = intentMeta(id);
+            return (
+              <span
+                key={id}
+                className="text-xs px-2.5 py-1 rounded-full"
+                style={{ backgroundColor: meta.color + "22", color: meta.color }}
+              >
+                {meta.label}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      {photos.length > 0 && (
+        <div>
+          <p className="text-[11px] text-[#6B5B73] mb-2">your photos</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {photos.map((url) => (
+              <button
+                key={url}
+                onClick={() => setLightbox(url)}
+                className="aspect-square rounded-lg overflow-hidden bg-[#2A1830]"
+              >
+                <img src={url} alt="" className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-start gap-2 mt-6 px-1 pb-4">
         <ShieldCheck size={14} className="text-[#6B5B73] mt-0.5 shrink-0" />
         <p className="text-[11px] text-[#6B5B73]">
           This is a test build for your college. Full version will add ID verification before wider launch.
         </p>
       </div>
+    </div>
+  );
+}
+
+// ---------------- FOLLOW LIST ----------------
+function FollowListScreen({ myId, mode, onBack }) {
+  const [people, setPeople] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    load();
+  }, [mode]);
+
+  async function load() {
+    setLoading(true);
+    if (mode === "followers") {
+      const { data } = await supabase.from("likes").select("liker_id").eq("liked_id", myId);
+      const ids = (data || []).map((l) => l.liker_id);
+      if (ids.length === 0) {
+        setPeople([]);
+        setLoading(false);
+        return;
+      }
+      const { data: profiles } = await supabase.from("profiles").select("*").in("id", ids);
+      setPeople(profiles || []);
+    } else {
+      const { data } = await supabase.from("likes").select("liked_id").eq("liker_id", myId);
+      const ids = (data || []).map((l) => l.liked_id);
+      if (ids.length === 0) {
+        setPeople([]);
+        setLoading(false);
+        return;
+      }
+      const { data: profiles } = await supabase.from("profiles").select("*").in("id", ids);
+      setPeople(profiles || []);
+    }
+    setLoading(false);
+  }
+
+  return (
+    <div className="p-5">
+      <div className="flex items-center gap-3 mb-5">
+        <button onClick={onBack} className="text-[#B8A9C0]">
+          <ArrowLeft size={20} />
+        </button>
+        <h1 className="font-display text-2xl">{mode === "followers" ? "Followers" : "Following"}</h1>
+      </div>
+
+      {loading && <p className="text-center text-[#B8A9C0] text-sm py-8">loading...</p>}
+
+      {!loading && people.length === 0 && (
+        <p className="text-center text-[#6B5B73] text-sm py-8">
+          {mode === "followers" ? "No one has liked you yet." : "You haven't liked anyone yet."}
+        </p>
+      )}
+
+      <div className="space-y-2.5">
+        {people.map((p) => (
+          <div key={p.id} className="flex items-center gap-3 bg-[#2A1830] rounded-xl p-3 border border-white/5">
+            <div className="w-11 h-11 rounded-full overflow-hidden shrink-0">
+              <Avatar profile={p} textSize="text-lg" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">{p.name}</p>
+              <p className="text-xs text-[#6B5B73]">@{p.username}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------- EDIT PROFILE ----------------
+function EditProfile({ profile, onDone, onCancel }) {
+  const [name, setName] = useState(profile.name || "");
+  const [age, setAge] = useState(profile.age ? String(profile.age) : "");
+  const [college, setCollege] = useState(profile.college || "");
+  const [gender, setGender] = useState(profile.gender || "");
+  const [photos, setPhotos] = useState(profile.photos || []);
+  const [uploading, setUploading] = useState(false);
+  const [intents, setIntents] = useState(profile.intents || []);
+  const [selectedPrompts, setSelectedPrompts] = useState(profile.prompts || []);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fileInputRef = useRef(null);
+
+  function toggleIntent(id) {
+    setIntents((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  async function handleFiles(e) {
+    const files = Array.from(e.target.files || []).slice(0, 6 - photos.length);
+    if (files.length === 0) return;
+    setUploading(true);
+    for (const file of files) {
+      const ext = file.name.split(".").pop();
+      const path = `${profile.id}/${crypto.randomUUID()}.${ext}`;
+      const { error } = await supabase.storage.from("avatars").upload(path, file);
+      if (!error) {
+        const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+        setPhotos((prev) => [...prev, data.publicUrl]);
+      }
+    }
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removePhoto(url) {
+    setPhotos((prev) => prev.filter((p) => p !== url));
+  }
+
+  function addPromptSlot() {
+    if (selectedPrompts.length >= 3) return;
+    const used = selectedPrompts.map((p) => p.q);
+    const next = PROMPT_OPTIONS.find((p) => !used.includes(p));
+    if (next) setSelectedPrompts((prev) => [...prev, { q: next, a: "" }]);
+  }
+
+  function updatePromptQuestion(index, q) {
+    setSelectedPrompts((prev) => prev.map((p, i) => (i === index ? { ...p, q } : p)));
+  }
+
+  function updatePromptAnswer(index, a) {
+    setSelectedPrompts((prev) => prev.map((p, i) => (i === index ? { ...p, a } : p)));
+  }
+
+  function removePrompt(index) {
+    setSelectedPrompts((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  const ageNum = parseInt(age, 10);
+  const canSave = name.trim() && college.trim() && ageNum >= 18 && photos.length >= 1 && intents.length > 0;
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        name,
+        age: ageNum,
+        college,
+        gender,
+        photos,
+        intents,
+        prompts: selectedPrompts.filter((p) => p.a.trim()),
+      })
+      .eq("id", profile.id);
+    setBusy(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    onDone();
+  }
+
+  return (
+    <div className="p-5">
+      <div className="flex items-center gap-3 mb-5">
+        <button onClick={onCancel} className="text-[#B8A9C0]">
+          <ArrowLeft size={20} />
+        </button>
+        <h1 className="font-display text-2xl">Edit profile</h1>
+      </div>
+
+      <div className="space-y-5">
+        <div>
+          <p className="text-[11px] text-[#6B5B73] mb-2">photos</p>
+          <div className="grid grid-cols-3 gap-2.5">
+            {photos.map((url) => (
+              <div key={url} className="relative aspect-square rounded-xl overflow-hidden bg-[#2A1830]">
+                <img src={url} alt="" className="w-full h-full object-cover" />
+                <button
+                  onClick={() => removePhoto(url)}
+                  className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center"
+                >
+                  <X size={14} className="text-white" />
+                </button>
+              </div>
+            ))}
+            {photos.length < 6 && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="aspect-square rounded-xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-1 text-[#6B5B73]"
+              >
+                {uploading ? <span className="text-xs">uploading...</span> : <Plus size={18} />}
+              </button>
+            )}
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFiles} className="hidden" />
+        </div>
+
+        <div>
+          <label className="text-xs text-[#B8A9C0] block mb-1.5">Name</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <div className="flex-1">
+            <label className="text-xs text-[#B8A9C0] block mb-1.5">Age</label>
+            <input
+              type="number"
+              value={age}
+              onChange={(e) => setAge(e.target.value)}
+              className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+            />
+          </div>
+          <div className="flex-[2]">
+            <label className="text-xs text-[#B8A9C0] block mb-1.5">College</label>
+            <input
+              value={college}
+              onChange={(e) => setCollege(e.target.value)}
+              className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs text-[#B8A9C0] block mb-1.5">Gender</label>
+          <div className="flex gap-2">
+            {["Woman", "Man", "Other"].map((g) => (
+              <button
+                key={g}
+                onClick={() => setGender(g)}
+                className={`px-4 py-2 rounded-full text-sm border ${
+                  gender === g ? "bg-[#FF4D6D] border-[#FF4D6D] text-white" : "border-white/10 text-[#B8A9C0]"
+                }`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[11px] text-[#6B5B73] mb-2">looking for</p>
+          <div className="grid grid-cols-1 gap-2">
+            {INTENTS.map((intent) => {
+              const active = intents.includes(intent.id);
+              return (
+                <button
+                  key={intent.id}
+                  onClick={() => toggleIntent(intent.id)}
+                  className="text-left px-4 py-2.5 rounded-xl border"
+                  style={
+                    active
+                      ? { backgroundColor: intent.color + "22", borderColor: intent.color }
+                      : { borderColor: "rgba(255,255,255,0.1)", backgroundColor: "#2A1830" }
+                  }
+                >
+                  <span className="text-sm" style={{ color: active ? intent.color : "#F5EDE4" }}>
+                    {intent.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[11px] text-[#6B5B73] mb-2">prompts</p>
+          <div className="space-y-3">
+            {selectedPrompts.map((p, i) => (
+              <div key={i} className="bg-[#2A1830] rounded-xl p-4 border border-white/5">
+                <div className="flex items-center justify-between mb-2">
+                  <select
+                    value={p.q}
+                    onChange={(e) => updatePromptQuestion(i, e.target.value)}
+                    className="bg-transparent text-[#FFB84D] text-sm font-medium outline-none"
+                  >
+                    {PROMPT_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt} className="bg-[#2A1830]">
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                  <button onClick={() => removePrompt(i)} className="text-[#6B5B73]">
+                    <X size={16} />
+                  </button>
+                </div>
+                <textarea
+                  value={p.a}
+                  onChange={(e) => updatePromptAnswer(i, e.target.value)}
+                  rows={2}
+                  className="w-full bg-transparent text-sm outline-none resize-none placeholder-[#6B5B73]"
+                />
+              </div>
+            ))}
+            {selectedPrompts.length < 3 && (
+              <button
+                onClick={addPromptSlot}
+                className="w-full py-3 rounded-xl border border-dashed border-white/20 text-[#B8A9C0] text-sm flex items-center justify-center gap-2"
+              >
+                <Plus size={16} /> Add a prompt
+              </button>
+            )}
+          </div>
+        </div>
+
+        {error && <p className="text-[#FF4D6D] text-xs">{error}</p>}
+
+        <button
+          disabled={!canSave || busy}
+          onClick={save}
+          className="w-full py-3 rounded-full bg-[#FF4D6D] text-white text-sm font-medium disabled:opacity-30 mb-8"
+        >
+          {busy ? "Saving..." : "Save changes"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- SETTINGS ----------------
+function SettingsScreen({ onBack, onLogout }) {
+  return (
+    <div className="p-5">
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={onBack} className="text-[#B8A9C0]">
+          <ArrowLeft size={20} />
+        </button>
+        <h1 className="font-display text-2xl">Settings</h1>
+      </div>
+
+      <div className="space-y-2.5">
+        <button
+          onClick={onLogout}
+          className="w-full flex items-center gap-3 bg-[#2A1830] rounded-xl p-4 text-left border border-white/5"
+        >
+          <LogOut size={18} className="text-[#B8A9C0]" />
+          <span className="text-sm">Log out</span>
+        </button>
+      </div>
+
+      <p className="text-[11px] text-[#6B5B73] mt-6 px-1">
+        Need to delete your account or report a problem? That's not automated yet in this test build —
+        reach out to whoever invited you to the pilot.
+      </p>
     </div>
   );
 }
