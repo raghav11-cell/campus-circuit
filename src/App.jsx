@@ -19,6 +19,7 @@ import {
   Flag,
   Video,
   Bell,
+  Search,
 } from "lucide-react";
 
 const INTENTS = [
@@ -71,6 +72,8 @@ export default function App() {
   const [showIntro, setShowIntro] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [viewingProfileId, setViewingProfileId] = useState(null);
 
   useEffect(() => {
     const seen = localStorage.getItem("cc_seen_intro");
@@ -174,6 +177,9 @@ export default function App() {
           <span className="font-display text-lg tracking-tight">Campus Circuit</span>
         </div>
         <div className="flex items-center gap-3">
+          <button onClick={() => setShowSearch(true)} className="text-[#B8A9C0]">
+            <Search size={20} />
+          </button>
           <button onClick={() => setShowNotifications(true)} className="relative text-[#B8A9C0]">
             <Bell size={20} />
             {unreadCount > 0 && (
@@ -185,6 +191,25 @@ export default function App() {
           <div className="text-xs text-[#B8A9C0]">{profile.college}</div>
         </div>
       </header>
+
+      {showSearch && (
+        <SearchScreen
+          onClose={() => setShowSearch(false)}
+          onOpenProfile={(id) => {
+            setShowSearch(false);
+            setViewingProfileId(id);
+          }}
+        />
+      )}
+
+      {viewingProfileId && (
+        <UserProfileView
+          userId={viewingProfileId}
+          myId={profile.id}
+          onBack={() => setViewingProfileId(null)}
+          onOpenProfile={(id) => setViewingProfileId(id)}
+        />
+      )}
 
       {showNotifications && (
         <NotificationsPanel
@@ -199,7 +224,7 @@ export default function App() {
       )}
 
       <main className="flex-1 overflow-y-auto max-w-md mx-auto w-full">
-        {tab === "feed" && <FeedTab profile={profile} />}
+        {tab === "feed" && <FeedTab profile={profile} onOpenProfile={setViewingProfileId} />}
         {tab === "browse" && <BrowseTab profile={profile} />}
         {tab === "matches" && (
           <MatchesTab
@@ -318,6 +343,265 @@ function NotificationsPanel({ myId, onClose, onRead, onNavigate }) {
             </button>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- SEARCH ----------------
+function SearchScreen({ onClose, onOpenProfile }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    setLoading(true);
+    const t = setTimeout(async () => {
+      const q = query.trim();
+      const { data } = await supabase
+        .from("profiles")
+        .select("*")
+        .or(`name.ilike.%${q}%,username.ilike.%${q}%`)
+        .limit(20);
+      setResults(data || []);
+      setLoading(false);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  return (
+    <div className="fixed inset-0 bg-[#1B0F23] z-30 flex flex-col">
+      <div className="max-w-md mx-auto w-full flex-1 flex flex-col">
+        <div className="flex items-center gap-3 px-5 pt-5 pb-3">
+          <button onClick={onClose} className="text-[#B8A9C0]">
+            <ArrowLeft size={20} />
+          </button>
+          <div className="flex-1 relative">
+            <SearchIcon />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name or @username"
+              className="w-full bg-[#2A1830] border border-white/10 rounded-full pl-9 pr-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D]"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5">
+          {loading && <p className="text-center text-[#B8A9C0] text-sm py-8">searching...</p>}
+          {!loading && query.trim() && results.length === 0 && (
+            <p className="text-center text-[#6B5B73] text-sm py-8">No one found.</p>
+          )}
+          <div className="space-y-2.5 pb-6">
+            {results.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => onOpenProfile(p.id)}
+                className="w-full flex items-center gap-3 bg-[#2A1830] rounded-xl p-3 border border-white/5 text-left"
+              >
+                <div className="w-11 h-11 rounded-full overflow-hidden shrink-0">
+                  <Avatar profile={p} textSize="text-lg" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{p.name}</p>
+                  <p className="text-xs text-[#6B5B73]">
+                    @{p.username} · {p.college}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B5B73]" />
+  );
+}
+
+// ---------------- USER PROFILE VIEW (someone else's profile) ----------------
+function UserProfileView({ userId, myId, onBack, onOpenProfile }) {
+  const [target, setTarget] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [followerCount, setFollowerCount] = useState(null);
+  const [followingCount, setFollowingCount] = useState(null);
+  const [lightbox, setLightbox] = useState(null);
+
+  useEffect(() => {
+    load();
+  }, [userId]);
+
+  async function load() {
+    setLoading(true);
+    const { data: p } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+    setTarget(p);
+
+    const { data: postData } = await supabase
+      .from("posts")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+    setPosts(postData || []);
+
+    const { count: followers } = await supabase
+      .from("likes")
+      .select("*", { count: "exact", head: true })
+      .eq("liked_id", userId);
+    setFollowerCount(followers ?? 0);
+
+    const { count: following } = await supabase
+      .from("likes")
+      .select("*", { count: "exact", head: true })
+      .eq("liker_id", userId);
+    setFollowingCount(following ?? 0);
+
+    setLoading(false);
+  }
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-[#1B0F23] z-30 flex items-center justify-center">
+        <p className="text-[#B8A9C0] text-sm">loading...</p>
+      </div>
+    );
+  }
+
+  if (!target) {
+    return (
+      <div className="fixed inset-0 bg-[#1B0F23] z-30 flex flex-col items-center justify-center gap-3">
+        <p className="text-[#B8A9C0] text-sm">Profile not found.</p>
+        <button onClick={onBack} className="text-[#FF4D6D] text-sm">
+          Go back
+        </button>
+      </div>
+    );
+  }
+
+  const isMe = userId === myId;
+
+  return (
+    <div className="fixed inset-0 bg-[#1B0F23] z-30 overflow-y-auto">
+      {lightbox && (
+        <div
+          className="fixed inset-0 bg-black/90 z-40 flex items-center justify-center px-4"
+          onClick={() => setLightbox(null)}
+        >
+          {lightbox.type === "video" ? (
+            <video src={lightbox.url} controls autoPlay className="max-h-[80vh] max-w-full rounded-xl" />
+          ) : (
+            <img src={lightbox.url} alt="" className="max-h-[80vh] max-w-full rounded-xl object-contain" />
+          )}
+        </div>
+      )}
+
+      <div className="max-w-md mx-auto w-full p-5">
+        <div className="flex items-center gap-3 mb-5">
+          <button onClick={onBack} className="text-[#B8A9C0]">
+            <ArrowLeft size={20} />
+          </button>
+          <h1 className="font-display text-xl">@{target.username}</h1>
+        </div>
+
+        <div className="flex items-center gap-4 mb-5">
+          <div className="w-20 h-20 rounded-full overflow-hidden shrink-0 border-2 border-[#FF4D6D]/40">
+            <Avatar profile={target} textSize="text-2xl" />
+          </div>
+          <div className="flex-1">
+            <h2 className="font-display text-xl leading-tight">
+              {target.name}
+              {target.age ? `, ${target.age}` : ""}
+            </h2>
+            <p className="text-xs text-[#B8A9C0] mt-0.5">{target.college}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2.5 mb-5">
+          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
+            <p className="font-display text-lg">{followerCount === null ? "—" : followerCount}</p>
+            <p className="text-[10px] text-[#6B5B73] mt-0.5">Followers</p>
+          </div>
+          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
+            <p className="font-display text-lg">{followingCount === null ? "—" : followingCount}</p>
+            <p className="text-[10px] text-[#6B5B73] mt-0.5">Following</p>
+          </div>
+          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
+            <p className="font-display text-lg">{posts.length}</p>
+            <p className="text-[10px] text-[#6B5B73] mt-0.5">Posts</p>
+          </div>
+        </div>
+
+        {(target.prompts || []).length > 0 && (
+          <div className="space-y-3 mb-5">
+            {target.prompts.map((p, i) => (
+              <div key={i} className="bg-[#2A1830] rounded-xl p-4 border border-white/5">
+                <p className="text-[11px] text-[#FFB84D]">{p.q}</p>
+                <p className="text-sm mt-1">{p.a}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mb-5">
+          <p className="text-[11px] text-[#6B5B73] mb-2">looking for</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(target.intents || []).map((id) => {
+              const meta = intentMeta(id);
+              return (
+                <span
+                  key={id}
+                  className="text-xs px-2.5 py-1 rounded-full"
+                  style={{ backgroundColor: meta.color + "22", color: meta.color }}
+                >
+                  {meta.label}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+
+        {!isMe && (
+          <p className="text-[11px] text-[#6B5B73] mb-5">
+            {isMe ? "" : "Posts marked \"matches only\" will only show here if you and " + target.name + " have matched."}
+          </p>
+        )}
+
+        {posts.length > 0 ? (
+          <div>
+            <p className="text-[11px] text-[#6B5B73] mb-2">posts</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {posts.map((post) => (
+                <button
+                  key={post.id}
+                  onClick={() => setLightbox({ url: post.media_url, type: post.media_type })}
+                  className="aspect-square rounded-lg overflow-hidden bg-[#2A1830] relative"
+                >
+                  {post.media_type === "video" ? (
+                    <video src={post.media_url} className="w-full h-full object-cover" />
+                  ) : (
+                    <img src={post.media_url} alt="" className="w-full h-full object-cover" />
+                  )}
+                  {post.visibility === "matches_only" && (
+                    <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center">
+                      <ShieldCheck size={11} className="text-white" />
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-center text-[#6B5B73] text-sm py-8">No posts to show.</p>
+        )}
       </div>
     </div>
   );
@@ -1199,7 +1483,7 @@ function StoryViewer({ data, myId, onClose }) {
 }
 
 // ---------------- FEED ----------------
-function FeedTab({ profile }) {
+function FeedTab({ profile, onOpenProfile }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -1290,13 +1574,13 @@ function FeedTab({ profile }) {
         {posts.map((post) => (
           <div key={post.id} className="bg-[#2A1830] rounded-2xl overflow-hidden border border-white/5">
             <div className="flex items-center gap-2.5 p-3">
-              <div className="w-8 h-8 rounded-full overflow-hidden shrink-0">
+              <button onClick={() => onOpenProfile(post.user_id)} className="w-8 h-8 rounded-full overflow-hidden shrink-0">
                 <Avatar profile={post.profiles} textSize="text-sm" />
-              </div>
-              <div className="flex-1 min-w-0">
+              </button>
+              <button onClick={() => onOpenProfile(post.user_id)} className="flex-1 min-w-0 text-left">
                 <p className="text-sm font-medium truncate">{post.profiles?.name}</p>
                 <p className="text-[11px] text-[#6B5B73]">@{post.profiles?.username}</p>
-              </div>
+              </button>
               <button onClick={() => setReportTarget(post.id)} className="text-[#6B5B73] p-1">
                 <Flag size={15} />
               </button>
@@ -1333,6 +1617,7 @@ function CreatePost({ userId, onClose, onPosted }) {
   const [preview, setPreview] = useState(null);
   const [mediaType, setMediaType] = useState(null);
   const [caption, setCaption] = useState("");
+  const [visibility, setVisibility] = useState("public");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef(null);
@@ -1369,6 +1654,7 @@ function CreatePost({ userId, onClose, onPosted }) {
       media_url: data.publicUrl,
       media_type: mediaType,
       caption: caption.trim() || null,
+      visibility,
     });
     setBusy(false);
     if (insErr) {
@@ -1430,6 +1716,32 @@ function CreatePost({ userId, onClose, onPosted }) {
           rows={2}
           className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 mt-4 outline-none focus:border-[#FF4D6D] resize-none text-sm"
         />
+
+        <div className="mt-4">
+          <p className="text-xs text-[#B8A9C0] mb-2">Who can see this?</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setVisibility("public")}
+              className={`flex-1 py-2.5 rounded-xl border text-sm ${
+                visibility === "public"
+                  ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]"
+                  : "border-white/10 text-[#B8A9C0]"
+              }`}
+            >
+              Everyone
+            </button>
+            <button
+              onClick={() => setVisibility("matches_only")}
+              className={`flex-1 py-2.5 rounded-xl border text-sm ${
+                visibility === "matches_only"
+                  ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]"
+                  : "border-white/10 text-[#B8A9C0]"
+              }`}
+            >
+              Only my matches
+            </button>
+          </div>
+        </div>
 
         {error && <p className="text-[#FF4D6D] text-xs mt-2">{error}</p>}
 
