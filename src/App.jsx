@@ -18,6 +18,7 @@ import {
   Grid3x3,
   Flag,
   Video,
+  Bell,
 } from "lucide-react";
 
 const INTENTS = [
@@ -68,6 +69,8 @@ export default function App() {
   const [activeChat, setActiveChat] = useState(null);
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
     const seen = localStorage.getItem("cc_seen_intro");
@@ -91,6 +94,29 @@ export default function App() {
     }
     loadProfile();
   }, [session]);
+
+  useEffect(() => {
+    if (!profile) return;
+    loadUnreadCount();
+    const channel = supabase
+      .channel(`notifications:${profile.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${profile.id}` },
+        () => setUnreadCount((c) => c + 1)
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [profile?.id]);
+
+  async function loadUnreadCount() {
+    const { count } = await supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", profile.id)
+      .eq("read", false);
+    setUnreadCount(count ?? 0);
+  }
 
   async function loadProfile() {
     const { data, error } = await supabase
@@ -147,8 +173,30 @@ export default function App() {
           <Sparkles size={18} className="text-[#FFB84D]" />
           <span className="font-display text-lg tracking-tight">Campus Circuit</span>
         </div>
-        <div className="text-xs text-[#B8A9C0]">{profile.college}</div>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setShowNotifications(true)} className="relative text-[#B8A9C0]">
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#FF4D6D] text-white text-[10px] flex items-center justify-center">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </button>
+          <div className="text-xs text-[#B8A9C0]">{profile.college}</div>
+        </div>
       </header>
+
+      {showNotifications && (
+        <NotificationsPanel
+          myId={profile.id}
+          onClose={() => setShowNotifications(false)}
+          onRead={() => setUnreadCount(0)}
+          onNavigate={(t) => {
+            setShowNotifications(false);
+            setTab(t);
+          }}
+        />
+      )}
 
       <main className="flex-1 overflow-y-auto max-w-md mx-auto w-full">
         {tab === "feed" && <FeedTab profile={profile} />}
@@ -189,6 +237,88 @@ export default function App() {
           ))}
         </nav>
       )}
+    </div>
+  );
+}
+
+// ---------------- NOTIFICATIONS ----------------
+function timeAgo(dateStr) {
+  const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function NotificationsPanel({ myId, onClose, onRead, onNavigate }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supabase
+      .from("notifications")
+      .select("*, profiles!notifications_actor_id_fkey(name, username, photos)")
+      .eq("user_id", myId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    setItems(data || []);
+    setLoading(false);
+
+    await supabase.from("notifications").update({ read: true }).eq("user_id", myId).eq("read", false);
+    onRead();
+  }
+
+  function messageFor(n) {
+    const name = n.profiles?.name || "Someone";
+    if (n.type === "like") return `${name} liked you`;
+    if (n.type === "match") return `You matched with ${name}`;
+    if (n.type === "message") return `${name} sent you a message`;
+    return "";
+  }
+
+  function iconFor(type) {
+    if (type === "like") return <Heart size={16} className="text-[#FF4D6D]" />;
+    if (type === "match") return <Sparkles size={16} className="text-[#FFB84D]" />;
+    return <MessageCircle size={16} className="text-[#5DA9FF]" />;
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-30 flex items-start justify-center px-4 pt-16">
+      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-md max-h-[75vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+          <h2 className="font-display text-xl">Notifications</h2>
+          <button onClick={onClose} className="text-[#B8A9C0]">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1">
+          {loading && <p className="text-center text-[#B8A9C0] text-sm py-8">loading...</p>}
+          {!loading && items.length === 0 && (
+            <p className="text-center text-[#6B5B73] text-sm py-8">No notifications yet.</p>
+          )}
+          {items.map((n) => (
+            <button
+              key={n.id}
+              onClick={() => onNavigate(n.type === "like" ? "profile" : "matches")}
+              className="w-full flex items-center gap-3 px-5 py-3 border-b border-white/5 text-left hover:bg-white/5"
+            >
+              <div className="w-9 h-9 rounded-full overflow-hidden shrink-0">
+                <Avatar profile={n.profiles} textSize="text-sm" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm">{messageFor(n)}</p>
+                <p className="text-[11px] text-[#6B5B73] mt-0.5">{timeAgo(n.created_at)}</p>
+              </div>
+              {iconFor(n.type)}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
