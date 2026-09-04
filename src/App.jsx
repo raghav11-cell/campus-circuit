@@ -258,6 +258,11 @@ export default function App() {
           myId={profile.id}
           onBack={() => setViewingProfileId(null)}
           onOpenProfile={(id) => setViewingProfileId(id)}
+          onStartChat={(matchRow) => {
+            setViewingProfileId(null);
+            setActiveChat(matchRow);
+            setTab("chatroom");
+          }}
         />
       )}
 
@@ -479,13 +484,15 @@ function SearchIcon() {
 }
 
 // ---------------- USER PROFILE VIEW (someone else's profile) ----------------
-function UserProfileView({ userId, myId, onBack, onOpenProfile }) {
+function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
   const [target, setTarget] = useState(null);
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [followerCount, setFollowerCount] = useState(null);
-  const [followingCount, setFollowingCount] = useState(null);
+  const [postCount, setPostCount] = useState(null);
   const [lightbox, setLightbox] = useState(null);
+  const [crushed, setCrushed] = useState(false);
+  const [crushBusy, setCrushBusy] = useState(false);
+  const [startingChat, setStartingChat] = useState(false);
 
   useEffect(() => {
     load();
@@ -502,20 +509,62 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile }) {
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
     setPosts(postData || []);
+    setPostCount((postData || []).length);
 
-    const { count: followers } = await supabase
-      .from("likes")
-      .select("*", { count: "exact", head: true })
-      .eq("liked_id", userId);
-    setFollowerCount(followers ?? 0);
+    if (userId !== myId) {
+      const { data: myCrush } = await supabase
+        .from("crushes")
+        .select("id")
+        .eq("sender_id", myId)
+        .eq("target_id", userId)
+        .maybeSingle();
+      setCrushed(!!myCrush);
 
-    const { count: following } = await supabase
-      .from("likes")
-      .select("*", { count: "exact", head: true })
-      .eq("liker_id", userId);
-    setFollowingCount(following ?? 0);
+      await supabase.from("profile_views").insert({ profile_id: userId, viewer_id: myId });
+    }
 
     setLoading(false);
+  }
+
+  async function toggleCrush() {
+    setCrushBusy(true);
+    if (crushed) {
+      await supabase.from("crushes").delete().eq("sender_id", myId).eq("target_id", userId);
+      setCrushed(false);
+      const [u1, u2] = [myId, userId].sort();
+      await supabase
+        .from("matches")
+        .update({ is_official: false })
+        .eq("user1_id", u1)
+        .eq("user2_id", u2)
+        .eq("is_official", true);
+    } else {
+      await supabase.from("crushes").insert({ sender_id: myId, target_id: userId });
+      setCrushed(true);
+    }
+    setCrushBusy(false);
+  }
+
+  async function sendMessage() {
+    setStartingChat(true);
+    const [user1_id, user2_id] = [myId, userId].sort();
+    const { data: existing } = await supabase
+      .from("matches")
+      .select("*")
+      .eq("user1_id", user1_id)
+      .eq("user2_id", user2_id)
+      .maybeSingle();
+    let matchRow = existing;
+    if (!matchRow) {
+      const { data: created } = await supabase
+        .from("matches")
+        .insert({ user1_id, user2_id })
+        .select()
+        .maybeSingle();
+      matchRow = created;
+    }
+    setStartingChat(false);
+    if (matchRow) onStartChat(matchRow);
   }
 
   if (loading) {
@@ -569,28 +618,45 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile }) {
           <div className="flex-1">
             <h2 className="font-display text-xl leading-tight">
               {target.name}
-              {target.age ? `, ${target.age}` : ""}
+              {target.show_details && target.age ? `, ${target.age}` : ""}
             </h2>
-            <p className="text-xs text-[#B8A9C0] mt-0.5">
-              {target.city}
-              {target.college ? ` · ${target.college}` : ""}
-            </p>
+            {target.show_details && (target.city || target.college) && (
+              <p className="text-xs text-[#B8A9C0] mt-0.5">
+                {target.city}
+                {target.college ? ` · ${target.college}` : ""}
+              </p>
+            )}
           </div>
         </div>
 
         {target.bio && <p className="text-sm text-[#F5EDE4]/90 mb-5">{target.bio}</p>}
 
-        <div className="grid grid-cols-3 gap-2.5 mb-5">
-          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
-            <p className="font-display text-lg">{followerCount === null ? "—" : followerCount}</p>
-            <p className="text-[10px] text-[#6B5B73] mt-0.5">Followers</p>
+        {!isMe && (
+          <div className="flex gap-2.5 mb-5">
+            <button
+              onClick={toggleCrush}
+              disabled={crushBusy}
+              className={`flex-1 py-2.5 rounded-full border text-sm flex items-center justify-center gap-1.5 ${
+                crushed ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]" : "border-white/10 text-[#B8A9C0]"
+              }`}
+            >
+              <Heart size={15} fill={crushed ? "#FF4D6D" : "none"} />
+              {crushed ? "Crushed" : "Crush"}
+            </button>
+            <button
+              onClick={sendMessage}
+              disabled={startingChat}
+              className="flex-1 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm flex items-center justify-center gap-1.5"
+            >
+              <MessageCircle size={15} />
+              {startingChat ? "Opening..." : "Message"}
+            </button>
           </div>
-          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
-            <p className="font-display text-lg">{followingCount === null ? "—" : followingCount}</p>
-            <p className="text-[10px] text-[#6B5B73] mt-0.5">Following</p>
-          </div>
-          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
-            <p className="font-display text-lg">{posts.length}</p>
+        )}
+
+        <div className="mb-5">
+          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5 w-28">
+            <p className="font-display text-lg">{postCount === null ? "—" : postCount}</p>
             <p className="text-[10px] text-[#6B5B73] mt-0.5">Posts</p>
           </div>
         </div>
@@ -624,9 +690,9 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile }) {
           </div>
         </div>
 
-        {!isMe && (
+        {!isMe && posts.length > 0 && (
           <p className="text-[11px] text-[#6B5B73] mb-5">
-            {isMe ? "" : "Posts marked \"matches only\" will only show here if you and " + target.name + " have matched."}
+            Posts marked "matches only" will only show here if you and {target.name} have matched.
           </p>
         )}
 
@@ -2061,7 +2127,7 @@ function BrowseTab({ profile }) {
 
     if (reverseLike) {
       const [user1_id, user2_id] = [profile.id, target.id].sort();
-      await supabase.from("matches").insert({ user1_id, user2_id }).select();
+      await supabase.from("matches").insert({ user1_id, user2_id, is_official: true }).select();
       setMatchToast(target);
     }
   }
@@ -2214,7 +2280,7 @@ function MatchesTab({ myId, onOpen }) {
     return (
       <div className="h-full min-h-[400px] flex flex-col items-center justify-center px-8 text-center gap-3">
         <MessageCircle size={32} className="text-[#6B5B73]" />
-        <p className="text-[#B8A9C0] text-sm">No matches yet. Keep browsing — mutual likes show up here.</p>
+        <p className="text-[#B8A9C0] text-sm">No conversations yet. Message someone from their profile to start.</p>
       </div>
     );
   }
@@ -2232,8 +2298,9 @@ function MatchesTab({ myId, onOpen }) {
           </div>
           <div className="flex-1">
             <p className="text-sm font-medium">{m.otherName}</p>
-            <p className="text-xs text-[#6B5B73]">Tap to chat</p>
+            <p className="text-xs text-[#6B5B73]">{m.is_official ? "Matched" : "Chatting"}</p>
           </div>
+          {m.is_official && <Sparkles size={16} className="text-[#FFB84D]" />}
         </button>
       ))}
     </div>
@@ -2243,9 +2310,10 @@ function MatchesTab({ myId, onOpen }) {
 // ---------------- PROFILE ----------------
 function ProfileTab({ profile, onLogout, onUpdate }) {
   const [matchCount, setMatchCount] = useState(null);
-  const [followerCount, setFollowerCount] = useState(null);
-  const [followingCount, setFollowingCount] = useState(null);
-  const [view, setView] = useState("main"); // main | edit | settings | followers | following
+  const [crushCount, setCrushCount] = useState(null);
+  const [postCount, setPostCount] = useState(null);
+  const [impressions, setImpressions] = useState(null);
+  const [view, setView] = useState("main"); // main | edit | settings
   const [lightbox, setLightbox] = useState(null);
 
   useEffect(() => {
@@ -2256,20 +2324,31 @@ function ProfileTab({ profile, onLogout, onUpdate }) {
     const { count: mCount } = await supabase
       .from("matches")
       .select("*", { count: "exact", head: true })
+      .eq("is_official", true)
       .or(`user1_id.eq.${profile.id},user2_id.eq.${profile.id}`);
     setMatchCount(mCount ?? 0);
 
-    const { count: followers } = await supabase
-      .from("likes")
+    const { count: cCount } = await supabase
+      .from("crushes")
       .select("*", { count: "exact", head: true })
-      .eq("liked_id", profile.id);
-    setFollowerCount(followers ?? 0);
+      .eq("target_id", profile.id);
+    setCrushCount(cCount ?? 0);
 
-    const { count: following } = await supabase
-      .from("likes")
+    const { count: pCount } = await supabase
+      .from("posts")
       .select("*", { count: "exact", head: true })
-      .eq("liker_id", profile.id);
-    setFollowingCount(following ?? 0);
+      .eq("user_id", profile.id);
+    setPostCount(pCount ?? 0);
+
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const { count: vCount } = await supabase
+      .from("profile_views")
+      .select("*", { count: "exact", head: true })
+      .eq("profile_id", profile.id)
+      .gte("created_at", startOfMonth.toISOString());
+    setImpressions(vCount ?? 0);
   }
 
   if (view === "edit") {
@@ -2286,15 +2365,12 @@ function ProfileTab({ profile, onLogout, onUpdate }) {
   }
 
   if (view === "settings") {
-    return <SettingsScreen onBack={() => setView("main")} onLogout={onLogout} />;
-  }
-
-  if (view === "followers" || view === "following") {
     return (
-      <FollowListScreen
-        myId={profile.id}
-        mode={view}
+      <SettingsScreen
+        profile={profile}
         onBack={() => setView("main")}
+        onLogout={onLogout}
+        onUpdate={onUpdate}
       />
     );
   }
@@ -2329,45 +2405,41 @@ function ProfileTab({ profile, onLogout, onUpdate }) {
         <div className="flex-1">
           <h2 className="font-display text-xl leading-tight">
             {profile.name}
-            {profile.age ? `, ${profile.age}` : ""}
+            {profile.show_details && profile.age ? `, ${profile.age}` : ""}
           </h2>
           <p className="text-xs text-[#B8A9C0] mt-0.5">
-            @{profile.username} · {profile.city}
-            {profile.state ? `, ${profile.state}` : ""}
+            @{profile.username}
+            {profile.show_details && profile.city ? ` · ${profile.city}${profile.state ? `, ${profile.state}` : ""}` : ""}
           </p>
-          {profile.college && <p className="text-[11px] text-[#6B5B73] mt-0.5">{profile.college}</p>}
+          {profile.show_details && profile.college && (
+            <p className="text-[11px] text-[#6B5B73] mt-0.5">{profile.college}</p>
+          )}
         </div>
       </div>
 
       {profile.bio && <p className="text-sm text-[#F5EDE4]/90 mb-5">{profile.bio}</p>}
 
-      <div className="grid grid-cols-2 gap-2.5 mb-5">
-        <button
-          onClick={() => setView("followers")}
-          className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
-        >
-          <p className="font-display text-xl">{followerCount === null ? "—" : followerCount}</p>
-          <p className="text-[11px] text-[#6B5B73] mt-0.5">Followers</p>
-        </button>
-        <button
-          onClick={() => setView("following")}
-          className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
-        >
-          <p className="font-display text-xl">{followingCount === null ? "—" : followingCount}</p>
-          <p className="text-[11px] text-[#6B5B73] mt-0.5">Following</p>
-        </button>
+      <div className="grid grid-cols-2 gap-2.5 mb-2">
         <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
           <p className="font-display text-xl">{matchCount === null ? "—" : matchCount}</p>
           <p className="text-[11px] text-[#6B5B73] mt-0.5">Matches</p>
         </div>
         <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
-          <p className="font-display text-xl">{photos.length}</p>
-          <p className="text-[11px] text-[#6B5B73] mt-0.5">Photos</p>
+          <p className="font-display text-xl">{postCount === null ? "—" : postCount}</p>
+          <p className="text-[11px] text-[#6B5B73] mt-0.5">Posts</p>
+        </div>
+        <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
+          <p className="font-display text-xl">{crushCount === null ? "—" : crushCount}</p>
+          <p className="text-[11px] text-[#6B5B73] mt-0.5">Crushes</p>
+        </div>
+        <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
+          <p className="font-display text-xl">{impressions === null ? "—" : impressions}</p>
+          <p className="text-[11px] text-[#6B5B73] mt-0.5">Impressions</p>
         </div>
       </div>
 
-      <p className="text-[10px] text-[#6B5B73] -mt-3 mb-5 px-1">
-        Only visible to you — no one else can see who likes you until you match.
+      <p className="text-[10px] text-[#6B5B73] mb-5 px-1">
+        These numbers are only visible to you.
       </p>
 
       <button
@@ -2785,7 +2857,19 @@ function EditProfile({ profile, onDone, onCancel }) {
 }
 
 // ---------------- SETTINGS ----------------
-function SettingsScreen({ onBack, onLogout }) {
+function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
+  const [showDetails, setShowDetails] = useState(profile.show_details || false);
+  const [saving, setSaving] = useState(false);
+
+  async function toggle() {
+    const next = !showDetails;
+    setShowDetails(next);
+    setSaving(true);
+    await supabase.from("profiles").update({ show_details: next }).eq("id", profile.id);
+    setSaving(false);
+    onUpdate();
+  }
+
   return (
     <div className="p-5">
       <div className="flex items-center gap-3 mb-6">
@@ -2793,6 +2877,31 @@ function SettingsScreen({ onBack, onLogout }) {
           <ArrowLeft size={20} />
         </button>
         <h1 className="font-display text-2xl">Settings</h1>
+      </div>
+
+      <div className="bg-[#2A1830] rounded-xl p-4 border border-white/5 mb-2.5">
+        <div className="flex items-center justify-between">
+          <div className="pr-3">
+            <p className="text-sm font-medium">Personal account</p>
+            <p className="text-[11px] text-[#6B5B73] mt-0.5">
+              Show your age, city, state & college on your profile. Off by default.
+            </p>
+          </div>
+          <button
+            onClick={toggle}
+            disabled={saving}
+            className={`w-11 h-6 rounded-full shrink-0 relative transition-colors ${
+              showDetails ? "bg-[#FF4D6D]" : "bg-white/15"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${
+                showDetails ? "left-5.5" : "left-0.5"
+              }`}
+              style={{ left: showDetails ? "22px" : "2px" }}
+            />
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2.5">
@@ -2818,26 +2927,32 @@ function ChatRoom({ match, myId, onBack }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
+  const [matchRow, setMatchRow] = useState(match);
+  const [otherProfile, setOtherProfile] = useState(null);
+  const [myCrushedThem, setMyCrushedThem] = useState(false);
+  const [theyCrushedMe, setTheyCrushedMe] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [justMatched, setJustMatched] = useState(false);
   const bottomRef = useRef(null);
-  const otherName = match.otherName || "Them";
+
+  const otherId = matchRow.user1_id === myId ? matchRow.user2_id : matchRow.user1_id;
+  const myConfirmed = matchRow.user1_id === myId ? matchRow.user1_confirmed : matchRow.user2_confirmed;
+  const theirConfirmed = matchRow.user1_id === myId ? matchRow.user2_confirmed : matchRow.user1_confirmed;
 
   useEffect(() => {
     load();
+    loadRelationship();
     const channel = supabase
-      .channel(`messages:${match.id}`)
+      .channel(`messages:${matchRow.id}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `match_id=eq.${match.id}` },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new]);
-        }
+        { event: "INSERT", schema: "public", table: "messages", filter: `match_id=eq.${matchRow.id}` },
+        (payload) => setMessages((prev) => [...prev, payload.new])
       )
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [match.id]);
+    return () => supabase.removeChannel(channel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchRow.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -2847,27 +2962,136 @@ function ChatRoom({ match, myId, onBack }) {
     const { data } = await supabase
       .from("messages")
       .select("*")
-      .eq("match_id", match.id)
+      .eq("match_id", matchRow.id)
       .order("created_at", { ascending: true });
     setMessages(data || []);
+    const { data: p } = await supabase.from("profiles").select("name, photos").eq("id", otherId).maybeSingle();
+    setOtherProfile(p);
     setLoading(false);
   }
 
+  async function loadRelationship() {
+    const { data: mine } = await supabase
+      .from("crushes")
+      .select("id")
+      .eq("sender_id", myId)
+      .eq("target_id", otherId)
+      .maybeSingle();
+    setMyCrushedThem(!!mine);
+    const { data: theirs } = await supabase
+      .from("crushes")
+      .select("id")
+      .eq("sender_id", otherId)
+      .eq("target_id", myId)
+      .maybeSingle();
+    setTheyCrushedMe(!!theirs);
+  }
+
+  async function toggleCrush() {
+    if (myCrushedThem) {
+      await supabase.from("crushes").delete().eq("sender_id", myId).eq("target_id", otherId);
+      setMyCrushedThem(false);
+      if (matchRow.is_official) {
+        await supabase.from("matches").update({ is_official: false }).eq("id", matchRow.id);
+        setMatchRow((prev) => ({ ...prev, is_official: false }));
+      }
+    } else {
+      await supabase.from("crushes").insert({ sender_id: myId, target_id: otherId });
+      setMyCrushedThem(true);
+    }
+  }
+
+  async function confirmMatch() {
+    if (!myCrushedThem) {
+      alert("Crush them first — tap the heart icon above — before you can confirm a match.");
+      return;
+    }
+    setConfirming(true);
+    const isUser1 = matchRow.user1_id === myId;
+    const payload = isUser1 ? { user1_confirmed: true } : { user2_confirmed: true };
+    const { data } = await supabase.from("matches").update(payload).eq("id", matchRow.id).select().maybeSingle();
+    let updated = data || { ...matchRow, ...payload };
+
+    const bothConfirmed = updated.user1_confirmed && updated.user2_confirmed;
+    if (bothConfirmed && myCrushedThem && theyCrushedMe && !updated.is_official) {
+      const { data: off } = await supabase
+        .from("matches")
+        .update({ is_official: true })
+        .eq("id", matchRow.id)
+        .select()
+        .maybeSingle();
+      updated = off || { ...updated, is_official: true };
+      setJustMatched(true);
+    }
+    setMatchRow(updated);
+    setConfirming(false);
+  }
+
+  const myMsgCount = messages.filter((m) => m.sender_id === myId).length;
+  const theirMsgCount = messages.filter((m) => m.sender_id === otherId).length;
+  const canSend = theirMsgCount > 0 || myMsgCount === 0;
+
   async function send() {
-    if (!text.trim()) return;
+    if (!text.trim() || !canSend) return;
     const content = text.trim();
     setText("");
-    await supabase.from("messages").insert({ match_id: match.id, sender_id: myId, content });
+    await supabase.from("messages").insert({ match_id: matchRow.id, sender_id: myId, content });
   }
 
   return (
     <div className="flex flex-col min-h-[70vh]">
+      {justMatched && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-40 px-6">
+          <div className="bg-[#2A1830] rounded-2xl p-6 text-center border border-[#FF4D6D]/30 max-w-xs">
+            <Sparkles size={28} className="text-[#FFB84D] mx-auto mb-2" />
+            <h3 className="font-display text-2xl">You matched!</h3>
+            <p className="text-sm text-[#B8A9C0] mt-2">
+              You and {otherProfile?.name} confirmed each other. It's official.
+            </p>
+            <button
+              onClick={() => setJustMatched(false)}
+              className="w-full mt-5 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
         <button onClick={onBack} className="text-[#B8A9C0]">
           <ArrowLeft size={20} />
         </button>
-        <span className="font-display text-lg">{otherName}</span>
+        <span className="font-display text-lg flex-1">{otherProfile?.name || "Them"}</span>
+        <button onClick={toggleCrush} className="p-1">
+          <Heart
+            size={20}
+            className={myCrushedThem ? "text-[#FF4D6D]" : "text-[#6B5B73]"}
+            fill={myCrushedThem ? "#FF4D6D" : "none"}
+          />
+        </button>
       </div>
+
+      {matchRow.is_official ? (
+        <div className="px-4 py-2 bg-[#FFB84D]/10 border-b border-white/5 flex items-center gap-2">
+          <Sparkles size={13} className="text-[#FFB84D]" />
+          <span className="text-[11px] text-[#FFB84D]">Matched</span>
+        </div>
+      ) : (
+        <div className="px-4 py-2.5 bg-[#2A1830] border-b border-white/5 flex items-center justify-between gap-3">
+          <p className="text-[11px] text-[#B8A9C0]">
+            {myConfirmed ? "Waiting for them to confirm..." : "Both crush + confirm to make it official."}
+          </p>
+          <button
+            onClick={confirmMatch}
+            disabled={myConfirmed || confirming}
+            className="text-[11px] px-3 py-1.5 rounded-full bg-[#FF4D6D] text-white disabled:opacity-40 shrink-0"
+          >
+            {myConfirmed ? "Confirmed" : "Confirm Match"}
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
         {loading && <p className="text-xs text-[#6B5B73] text-center">loading chat...</p>}
         {!loading && messages.length === 0 && (
@@ -2888,17 +3112,25 @@ function ChatRoom({ match, myId, onBack }) {
         ))}
         <div ref={bottomRef} />
       </div>
+
+      {!canSend && (
+        <p className="text-[11px] text-[#6B5B73] text-center pb-1.5">
+          Wait for them to reply before sending another message.
+        </p>
+      )}
       <div className="p-3 border-t border-white/5 flex gap-2">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="Type a message..."
-          className="flex-1 bg-[#2A1830] border border-white/10 rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D]"
+          placeholder={canSend ? "Type a message..." : "Waiting for a reply..."}
+          disabled={!canSend}
+          className="flex-1 bg-[#2A1830] border border-white/10 rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D] disabled:opacity-50"
         />
         <button
           onClick={send}
-          className="w-10 h-10 rounded-full bg-[#FF4D6D] flex items-center justify-center text-white shrink-0"
+          disabled={!canSend}
+          className="w-10 h-10 rounded-full bg-[#FF4D6D] flex items-center justify-center text-white shrink-0 disabled:opacity-50"
         >
           <Send size={16} />
         </button>
