@@ -122,6 +122,13 @@ export default function App() {
     const seen = localStorage.getItem("cc_seen_intro");
     if (!seen) setShowIntro(true);
 
+    const savedPending = localStorage.getItem("cc_pending_signup");
+    if (savedPending) {
+      try {
+        setPendingSignup(JSON.parse(savedPending));
+      } catch (e) {}
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
@@ -762,9 +769,17 @@ function AuthScreen({ onSignedUp }) {
     setBusy(true);
     try {
       if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data: signUpData, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        onSignedUp({ name, dob, age, country, state, city, mobile, college });
+
+        const pending = { name, dob, age, country, state, city, mobile, college };
+        localStorage.setItem("cc_pending_signup", JSON.stringify(pending));
+        onSignedUp(pending);
+
+        if (!signUpData.session) {
+          // email confirmation is required — no session yet
+          setMode("signup-sent");
+        }
       } else if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -782,7 +797,11 @@ function AuthScreen({ onSignedUp }) {
   }
 
   const title =
-    mode === "forgot" || mode === "forgot-sent" ? "Reset your password" : "Campus Circuit";
+    mode === "forgot" || mode === "forgot-sent"
+      ? "Reset your password"
+      : mode === "signup-sent"
+      ? "Confirm your email"
+      : "Campus Circuit";
 
   return (
     <div className="min-h-screen bg-[#1B0F23] text-[#F5EDE4] font-sans flex flex-col">
@@ -794,10 +813,31 @@ function AuthScreen({ onSignedUp }) {
             ? "Enter the email on your account and we'll send you a reset link."
             : mode === "forgot-sent"
             ? "Check your inbox — tap the link we sent to set a new password."
+            : mode === "signup-sent"
+            ? "We sent a confirmation link to your email. Tap it to activate your account, then come back and log in."
             : mode === "signup"
             ? "Say what you're actually looking for. No guessing games."
             : "Welcome back."}
         </p>
+
+        {mode === "signup-sent" && (
+          <div className="space-y-3">
+            <a
+              href="https://mail.google.com"
+              target="_blank"
+              rel="noreferrer"
+              className="block w-full text-center py-3 rounded-full bg-[#FF4D6D] text-white text-sm font-medium"
+            >
+              Open my email
+            </a>
+            <button
+              onClick={() => setMode("login")}
+              className="w-full py-3 rounded-full border border-white/10 text-[#B8A9C0] text-sm"
+            >
+              Back to log in
+            </button>
+          </div>
+        )}
 
         {mode === "forgot-sent" && (
           <div className="space-y-3">
@@ -818,7 +858,7 @@ function AuthScreen({ onSignedUp }) {
           </div>
         )}
 
-        {mode !== "forgot-sent" && (
+        {mode !== "forgot-sent" && mode !== "signup-sent" && (
           <form onSubmit={submit} className="space-y-4">
             <div>
               <label className="text-xs text-[#B8A9C0] block mb-1.5">Email</label>
@@ -1150,6 +1190,7 @@ function CreateProfile({ userId, initialData, onDone }) {
       );
       return;
     }
+    localStorage.removeItem("cc_pending_signup");
     onDone();
   }
 
