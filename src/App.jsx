@@ -1418,6 +1418,570 @@ function CreateProfile({ userId, initialData, onDone }) {
   );
 }
 
+// ---------------- STORIES ----------------
+function StoriesBar({ profile }) {
+  const [groups, setGroups] = useState([]);
+  const [myStories, setMyStories] = useState([]);
+  const [viewerData, setViewerData] = useState(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function load() {
+    const { data: stories } = await supabase
+      .from("stories")
+      .select("*, profiles(name, username, photos)")
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: true });
+
+    const { data: views } = await supabase.from("story_views").select("story_id").eq("viewer_id", profile.id);
+    const viewedIds = new Set((views || []).map((v) => v.story_id));
+
+    const byUser = {};
+    (stories || []).forEach((s) => {
+      if (!byUser[s.user_id]) byUser[s.user_id] = { profile: s.profiles, userId: s.user_id, stories: [] };
+      byUser[s.user_id].stories.push(s);
+    });
+
+    const mine = byUser[profile.id]?.stories || [];
+    setMyStories(mine);
+
+    const others = Object.values(byUser)
+      .filter((g) => g.userId !== profile.id)
+      .map((g) => ({ ...g, allViewed: g.stories.every((s) => viewedIds.has(s.id)) }));
+    setGroups(others);
+  }
+
+  function openViewer(startIndex, includeMine) {
+    const all = includeMine ? [{ profile, userId: profile.id, stories: myStories }, ...groups] : groups;
+    setViewerData({ groups: all, startIndex });
+  }
+
+  async function handleUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      alert("File too big — keep it under 20MB.");
+      return;
+    }
+    const mediaType = file.type.startsWith("video") ? "video" : "image";
+    const ext = file.name.split(".").pop();
+    const path = `${profile.id}/${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from("stories").upload(path, file);
+    if (!error) {
+      const { data } = supabase.storage.from("stories").getPublicUrl(path);
+      await supabase.from("stories").insert({ user_id: profile.id, media_url: data.publicUrl, media_type: mediaType });
+      load();
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  return (
+    <div className="mb-5">
+      {viewerData && (
+        <StoryViewer
+          data={viewerData}
+          myId={profile.id}
+          onClose={() => {
+            setViewerData(null);
+            load();
+          }}
+        />
+      )}
+      <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" />
+
+      <div className="flex gap-3.5 overflow-x-auto pb-1 -mx-1 px-1">
+        <button
+          onClick={() => (myStories.length > 0 ? openViewer(0, true) : fileInputRef.current?.click())}
+          className="flex flex-col items-center gap-1.5 shrink-0"
+        >
+          <div className="relative w-14 h-14">
+            <div
+              className={`w-14 h-14 rounded-full p-[2px] ${
+                myStories.length > 0 ? "bg-gradient-to-br from-[#FF4D6D] to-[#FFB84D]" : "bg-white/10"
+              }`}
+            >
+              <div className="w-full h-full rounded-full overflow-hidden border-2 border-[#1B0F23]">
+                <Avatar profile={profile} textSize="text-lg" />
+              </div>
+            </div>
+            {myStories.length === 0 && (
+              <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#FF4D6D] flex items-center justify-center border-2 border-[#1B0F23]">
+                <Plus size={11} className="text-white" />
+              </div>
+            )}
+          </div>
+          <span className="text-[10px] text-[#B8A9C0]">Your story</span>
+        </button>
+
+        {groups.map((g, i) => (
+          <button
+            key={g.userId}
+            onClick={() => openViewer(myStories.length > 0 ? i + 1 : i, myStories.length > 0)}
+            className="flex flex-col items-center gap-1.5 shrink-0"
+          >
+            <div
+              className={`w-14 h-14 rounded-full p-[2px] ${
+                g.allViewed ? "bg-white/10" : "bg-gradient-to-br from-[#FF4D6D] to-[#FFB84D]"
+              }`}
+            >
+              <div className="w-full h-full rounded-full overflow-hidden border-2 border-[#1B0F23]">
+                <Avatar profile={g.profile} textSize="text-lg" />
+              </div>
+            </div>
+            <span className="text-[10px] text-[#B8A9C0] max-w-[56px] truncate">{g.profile?.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StoryViewer({ data, myId, onClose }) {
+  const [groupIndex, setGroupIndex] = useState(data.startIndex);
+  const [storyIndex, setStoryIndex] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const timerRef = useRef(null);
+  const startRef = useRef(null);
+  const videoRef = useRef(null);
+
+  const group = data.groups[groupIndex];
+  const story = group?.stories[storyIndex];
+  const DURATION = 5000;
+
+  useEffect(() => {
+    if (!story) return;
+    setProgress(0);
+    markViewed(story.id);
+
+    if (story.media_type === "image") {
+      startRef.current = Date.now();
+      timerRef.current = setInterval(() => {
+        const pct = Math.min(100, ((Date.now() - startRef.current) / DURATION) * 100);
+        setProgress(pct);
+        if (pct >= 100) next();
+      }, 50);
+    }
+    return () => clearInterval(timerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupIndex, storyIndex]);
+
+  async function markViewed(storyId) {
+    if (group.userId === myId) return;
+    await supabase.from("story_views").insert({ story_id: storyId, viewer_id: myId }).select().maybeSingle();
+  }
+
+  function next() {
+    clearInterval(timerRef.current);
+    if (storyIndex < group.stories.length - 1) {
+      setStoryIndex((i) => i + 1);
+    } else if (groupIndex < data.groups.length - 1) {
+      setGroupIndex((i) => i + 1);
+      setStoryIndex(0);
+    } else {
+      onClose();
+    }
+  }
+
+  function prev() {
+    clearInterval(timerRef.current);
+    if (storyIndex > 0) {
+      setStoryIndex((i) => i - 1);
+    } else if (groupIndex > 0) {
+      setGroupIndex((i) => i - 1);
+      setStoryIndex(0);
+    }
+  }
+
+  function handleVideoProgress() {
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    setProgress((v.currentTime / v.duration) * 100);
+  }
+
+  if (!story) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black z-40 flex items-center justify-center">
+      <div className="w-full h-full max-w-md relative flex flex-col">
+        <div className="flex gap-1 px-3 pt-3">
+          {group.stories.map((_, i) => (
+            <div key={i} className="flex-1 h-0.5 bg-white/25 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-white"
+                style={{
+                  width: i < storyIndex ? "100%" : i === storyIndex ? `${progress}%` : "0%",
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2.5 px-3 pt-3">
+          <div className="w-8 h-8 rounded-full overflow-hidden">
+            <Avatar profile={group.profile} textSize="text-sm" />
+          </div>
+          <span className="text-white text-sm font-medium">{group.profile?.name}</span>
+          <span className="text-white/60 text-xs">{timeAgo(story.created_at)}</span>
+          <button onClick={onClose} className="ml-auto text-white/80 p-1">
+            <X size={22} />
+          </button>
+        </div>
+
+        <div className="flex-1 relative mt-3">
+          <div className="absolute inset-0 flex">
+            <button className="w-1/3 h-full" onClick={prev} />
+            <button className="w-2/3 h-full" onClick={next} />
+          </div>
+          {story.media_type === "video" ? (
+            <video
+              ref={videoRef}
+              src={story.media_url}
+              autoPlay
+              playsInline
+              onTimeUpdate={handleVideoProgress}
+              onEnded={next}
+              className="w-full h-full object-contain"
+            />
+          ) : (
+            <img src={story.media_url} alt="" className="w-full h-full object-contain" />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- FEED ----------------
+function FeedTab({ profile, onOpenProfile }) {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [myLikes, setMyLikes] = useState({});
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supabase
+      .from("posts")
+      .select("*, profiles(name, username, photos)")
+      .order("created_at", { ascending: false });
+
+    const { data: allLikes } = await supabase.from("post_likes").select("post_id, user_id");
+    const counts = {};
+    (allLikes || []).forEach((l) => {
+      counts[l.post_id] = (counts[l.post_id] || 0) + 1;
+    });
+    const withCounts = (data || []).map((p) => ({ ...p, like_count: counts[p.id] || 0 }));
+    setPosts(withCounts);
+
+    const map = {};
+    (allLikes || []).filter((l) => l.user_id === profile.id).forEach((l) => (map[l.post_id] = true));
+    setMyLikes(map);
+    setLoading(false);
+  }
+
+  async function toggleLike(post) {
+    const liked = myLikes[post.id];
+    setMyLikes((prev) => ({ ...prev, [post.id]: !liked }));
+    setPosts((prev) =>
+      prev.map((p) => (p.id === post.id ? { ...p, like_count: (p.like_count || 0) + (liked ? -1 : 1) } : p))
+    );
+    if (liked) {
+      await supabase.from("post_likes").delete().eq("post_id", post.id).eq("user_id", profile.id);
+    } else {
+      await supabase.from("post_likes").insert({ post_id: post.id, user_id: profile.id });
+    }
+  }
+
+  return (
+    <div className="p-5">
+      {showCreate && (
+        <CreatePost
+          userId={profile.id}
+          onClose={() => setShowCreate(false)}
+          onPosted={() => {
+            setShowCreate(false);
+            load();
+          }}
+        />
+      )}
+      {reportTarget && (
+        <ReportModal
+          reporterId={profile.id}
+          targetType="post"
+          targetId={reportTarget}
+          onClose={() => setReportTarget(null)}
+        />
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="font-display text-2xl">Feed</h1>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="w-9 h-9 rounded-full bg-[#FF4D6D] flex items-center justify-center text-white"
+        >
+          <Plus size={18} />
+        </button>
+      </div>
+
+      <StoriesBar profile={profile} />
+
+      {loading && <p className="text-center text-[#B8A9C0] text-sm py-8">loading feed...</p>}
+
+      {!loading && posts.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+          <Grid3x3 size={32} className="text-[#6B5B73]" />
+          <p className="text-[#B8A9C0] text-sm">No posts yet. Be the first to share something.</p>
+        </div>
+      )}
+
+      <div className="space-y-5">
+        {posts.map((post) => (
+          <div key={post.id} className="bg-[#2A1830] rounded-2xl overflow-hidden border border-white/5">
+            <div className="flex items-center gap-2.5 p-3">
+              <button onClick={() => onOpenProfile(post.user_id)} className="w-8 h-8 rounded-full overflow-hidden shrink-0">
+                <Avatar profile={post.profiles} textSize="text-sm" />
+              </button>
+              <button onClick={() => onOpenProfile(post.user_id)} className="flex-1 min-w-0 text-left">
+                <p className="text-sm font-medium truncate">{post.profiles?.name}</p>
+                <p className="text-[11px] text-[#6B5B73]">@{post.profiles?.username}</p>
+              </button>
+              <button onClick={() => setReportTarget(post.id)} className="text-[#6B5B73] p-1">
+                <Flag size={15} />
+              </button>
+            </div>
+
+            <div className="bg-black">
+              {post.media_type === "video" ? (
+                <video src={post.media_url} controls className="w-full max-h-[480px] object-contain" />
+              ) : (
+                <img src={post.media_url} alt="" className="w-full max-h-[480px] object-cover" />
+              )}
+            </div>
+
+            <div className="p-3">
+              <button onClick={() => toggleLike(post)} className="flex items-center gap-1.5">
+                <Heart
+                  size={19}
+                  className={myLikes[post.id] ? "text-[#FF4D6D]" : "text-[#B8A9C0]"}
+                  fill={myLikes[post.id] ? "#FF4D6D" : "none"}
+                />
+                <span className="text-xs text-[#B8A9C0]">{post.like_count || 0}</span>
+              </button>
+              {post.caption && <p className="text-sm mt-2">{post.caption}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CreatePost({ userId, onClose, onPosted }) {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [mediaType, setMediaType] = useState(null);
+  const [caption, setCaption] = useState("");
+  const [visibility, setVisibility] = useState("public");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fileInputRef = useRef(null);
+  const MAX_MB = 20;
+
+  function handlePick(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > MAX_MB * 1024 * 1024) {
+      setError(`File too big — keep it under ${MAX_MB}MB.`);
+      return;
+    }
+    setError("");
+    setFile(f);
+    setMediaType(f.type.startsWith("video") ? "video" : "image");
+    setPreview(URL.createObjectURL(f));
+  }
+
+  async function submit() {
+    if (!file) return;
+    setBusy(true);
+    setError("");
+    const ext = file.name.split(".").pop();
+    const path = `${userId}/${crypto.randomUUID()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("posts").upload(path, file);
+    if (upErr) {
+      setBusy(false);
+      setError(upErr.message);
+      return;
+    }
+    const { data } = supabase.storage.from("posts").getPublicUrl(path);
+    const { error: insErr } = await supabase.from("posts").insert({
+      user_id: userId,
+      media_url: data.publicUrl,
+      media_type: mediaType,
+      caption: caption.trim() || null,
+      visibility,
+    });
+    setBusy(false);
+    if (insErr) {
+      setError(insErr.message);
+      return;
+    }
+    onPosted();
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-30 flex items-end sm:items-center justify-center px-4">
+      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-md p-5 max-h-[85vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display text-xl">New post</h2>
+          <button onClick={onClose} className="text-[#B8A9C0]">
+            <X size={20} />
+          </button>
+        </div>
+
+        {!preview && (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full aspect-square rounded-xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-2 text-[#6B5B73]"
+          >
+            <div className="flex gap-3">
+              <Camera size={22} />
+              <Video size={22} />
+            </div>
+            <span className="text-xs">Tap to choose a photo or video</span>
+            <span className="text-[10px] text-[#6B5B73]">Max {MAX_MB}MB</span>
+          </button>
+        )}
+
+        {preview && (
+          <div className="rounded-xl overflow-hidden bg-black relative">
+            {mediaType === "video" ? (
+              <video src={preview} controls className="w-full max-h-72 object-contain" />
+            ) : (
+              <img src={preview} alt="" className="w-full max-h-72 object-cover" />
+            )}
+            <button
+              onClick={() => {
+                setFile(null);
+                setPreview(null);
+              }}
+              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center"
+            >
+              <X size={15} className="text-white" />
+            </button>
+          </div>
+        )}
+
+        <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handlePick} className="hidden" />
+
+        <textarea
+          value={caption}
+          onChange={(e) => setCaption(e.target.value)}
+          placeholder="Write a caption (optional)..."
+          rows={2}
+          className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 mt-4 outline-none focus:border-[#FF4D6D] resize-none text-sm"
+        />
+
+        <div className="mt-4">
+          <p className="text-xs text-[#B8A9C0] mb-2">Who can see this?</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setVisibility("public")}
+              className={`flex-1 py-2.5 rounded-xl border text-sm ${
+                visibility === "public"
+                  ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]"
+                  : "border-white/10 text-[#B8A9C0]"
+              }`}
+            >
+              Everyone
+            </button>
+            <button
+              onClick={() => setVisibility("matches_only")}
+              className={`flex-1 py-2.5 rounded-xl border text-sm ${
+                visibility === "matches_only"
+                  ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]"
+                  : "border-white/10 text-[#B8A9C0]"
+              }`}
+            >
+              Only my matches
+            </button>
+          </div>
+        </div>
+
+        {error && <p className="text-[#FF4D6D] text-xs mt-2">{error}</p>}
+
+        <button
+          disabled={!file || busy}
+          onClick={submit}
+          className="w-full py-3 rounded-full bg-[#FF4D6D] text-white text-sm font-medium disabled:opacity-30 mt-4"
+        >
+          {busy ? "Posting..." : "Share post"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReportModal({ reporterId, targetType, targetId, onClose }) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    await supabase.from("reports").insert({
+      reporter_id: reporterId,
+      target_type: targetType,
+      target_id: String(targetId),
+      reason: reason.trim() || null,
+    });
+    setBusy(false);
+    setDone(true);
+    setTimeout(onClose, 1200);
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-30 flex items-center justify-center px-6">
+      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-xs p-5">
+        {done ? (
+          <p className="text-sm text-[#4DD4C0] text-center py-4">Report submitted. Thank you.</p>
+        ) : (
+          <>
+            <h3 className="font-display text-lg mb-1">Report this {targetType}</h3>
+            <p className="text-xs text-[#B8A9C0] mb-3">Tell us what's wrong — this stays confidential.</p>
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={3}
+              placeholder="What's happening..."
+              className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#FF4D6D] resize-none"
+            />
+            <div className="flex gap-2 mt-4">
+              <button onClick={onClose} className="flex-1 py-2.5 rounded-full border border-white/10 text-[#B8A9C0] text-sm">
+                Cancel
+              </button>
+              <button
+                disabled={busy}
+                onClick={submit}
+                className="flex-1 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm disabled:opacity-50"
+              >
+                {busy ? "Sending..." : "Submit"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------------- BROWSE ----------------
 function BrowseTab({ profile }) {
   const [pool, setPool] = useState([]);
