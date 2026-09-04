@@ -29,6 +29,7 @@ const INTENTS = [
   { id: "friend", label: "Just Friends", color: "#4DD4C0" },
   { id: "online", label: "Online Friend", color: "#5DA9FF" },
   { id: "situationship", label: "Situationship", color: "#FF8C42" },
+  { id: "other", label: "Other", color: "#9AA5B1" },
 ];
 
 const PROMPT_OPTIONS = [
@@ -47,6 +48,47 @@ const fontStyles = `
   .font-display { font-family: 'Fraunces', serif; }
   .font-sans { font-family: 'Inter', sans-serif; }
 `;
+
+function calculateAge(dobStr) {
+  if (!dobStr) return null;
+  const dob = new Date(dobStr);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
+function wordCount(str) {
+  return str.trim() ? str.trim().split(/\s+/).length : 0;
+}
+
+function PasswordField({ value, onChange, placeholder, label }) {
+  const [show, setShow] = useState(false);
+  return (
+    <div>
+      {label && <label className="text-xs text-[#B8A9C0] block mb-1.5">{label}</label>}
+      <div className="relative">
+        <input
+          type={show ? "text" : "password"}
+          required
+          minLength={6}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 pr-12 outline-none focus:border-[#FF4D6D]"
+        />
+        <button
+          type="button"
+          onClick={() => setShow((s) => !s)}
+          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#6B5B73] text-xs"
+        >
+          {show ? "Hide" : "Show"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function Avatar({ profile, size = "w-full h-full", textSize = "text-5xl" }) {
   const photo = profile?.photos?.[0];
@@ -74,6 +116,7 @@ export default function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [viewingProfileId, setViewingProfileId] = useState(null);
+  const [pendingSignup, setPendingSignup] = useState(null);
 
   useEffect(() => {
     const seen = localStorage.getItem("cc_seen_intro");
@@ -160,11 +203,11 @@ export default function App() {
   }
 
   if (!session) {
-    return <AuthScreen />;
+    return <AuthScreen onSignedUp={setPendingSignup} />;
   }
 
   if (!profile) {
-    return <CreateProfile userId={session.user.id} onDone={loadProfile} />;
+    return <CreateProfile userId={session.user.id} initialData={pendingSignup} onDone={loadProfile} />;
   }
 
   return (
@@ -521,9 +564,14 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile }) {
               {target.name}
               {target.age ? `, ${target.age}` : ""}
             </h2>
-            <p className="text-xs text-[#B8A9C0] mt-0.5">{target.college}</p>
+            <p className="text-xs text-[#B8A9C0] mt-0.5">
+              {target.city}
+              {target.college ? ` · ${target.college}` : ""}
+            </p>
           </div>
         </div>
+
+        {target.bio && <p className="text-sm text-[#F5EDE4]/90 mb-5">{target.bio}</p>}
 
         <div className="grid grid-cols-3 gap-2.5 mb-5">
           <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
@@ -562,7 +610,7 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile }) {
                   className="text-xs px-2.5 py-1 rounded-full"
                   style={{ backgroundColor: meta.color + "22", color: meta.color }}
                 >
-                  {meta.label}
+                  {id === "other" ? target.intent_other || "Other" : meta.label}
                 </span>
               );
             })}
@@ -669,21 +717,54 @@ function WelcomeIntro({ onDone }) {
 }
 
 // ---------------- AUTH ----------------
-function AuthScreen() {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function AuthScreen({ onSignedUp }) {
   const [mode, setMode] = useState("signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [dob, setDob] = useState("");
+  const [country, setCountry] = useState("");
+  const [state, setStateVal] = useState("");
+  const [city, setCity] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [college, setCollege] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const age = calculateAge(dob);
+  const signupValid =
+    EMAIL_RE.test(email) &&
+    password.length >= 6 &&
+    name.trim() &&
+    dob &&
+    age !== null &&
+    age >= 18 &&
+    country.trim() &&
+    state.trim() &&
+    city.trim() &&
+    mobile.trim().length >= 7;
 
   async function submit(e) {
     e.preventDefault();
     setError("");
+
+    if (mode === "signup" && !EMAIL_RE.test(email)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+    if (mode === "signup" && dob && age < 18) {
+      setError("You must be 18 or older to join.");
+      return;
+    }
+
     setBusy(true);
     try {
       if (mode === "signup") {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
+        onSignedUp({ name, dob, age, country, state, city, mobile, college });
       } else if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -706,19 +787,36 @@ function AuthScreen() {
   return (
     <div className="min-h-screen bg-[#1B0F23] text-[#F5EDE4] font-sans flex flex-col">
       <style>{fontStyles}</style>
-      <div className="max-w-md mx-auto w-full flex-1 flex flex-col px-6 pt-16">
-        <div className="flex items-center gap-2 mb-1">
-          <Sparkles size={18} className="text-[#FFB84D]" />
-          <span className="text-xs text-[#B8A9C0] tracking-wide">student-only</span>
-        </div>
+      <div className="max-w-md mx-auto w-full flex-1 flex flex-col px-6 pt-12 pb-10">
         <h1 className="font-display text-3xl leading-tight">{title}</h1>
-        <p className="text-[#B8A9C0] text-sm mt-2 mb-8">
+        <p className="text-[#B8A9C0] text-sm mt-2 mb-6">
           {mode === "forgot"
             ? "Enter the email on your account and we'll send you a reset link."
             : mode === "forgot-sent"
             ? "Check your inbox — tap the link we sent to set a new password."
-            : "Say what you're actually looking for. No guessing games."}
+            : mode === "signup"
+            ? "Say what you're actually looking for. No guessing games."
+            : "Welcome back."}
         </p>
+
+        {mode === "forgot-sent" && (
+          <div className="space-y-3">
+            <a
+              href="https://mail.google.com"
+              target="_blank"
+              rel="noreferrer"
+              className="block w-full text-center py-3 rounded-full bg-[#FF4D6D] text-white text-sm font-medium"
+            >
+              Open my email
+            </a>
+            <button
+              onClick={() => setMode("login")}
+              className="w-full py-3 rounded-full border border-white/10 text-[#B8A9C0] text-sm"
+            >
+              Back to log in
+            </button>
+          </div>
+        )}
 
         {mode !== "forgot-sent" && (
           <form onSubmit={submit} className="space-y-4">
@@ -733,20 +831,16 @@ function AuthScreen() {
                 className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
               />
             </div>
+
             {mode !== "forgot" && (
-              <div>
-                <label className="text-xs text-[#B8A9C0] block mb-1.5">Password</label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 6 characters"
-                  className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
-                />
-              </div>
+              <PasswordField
+                label="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 6 characters"
+              />
             )}
+
             {mode === "login" && (
               <button
                 type="button"
@@ -759,10 +853,96 @@ function AuthScreen() {
                 Forgot password?
               </button>
             )}
+
+            {mode === "signup" && (
+              <>
+                <div className="pt-2 border-t border-white/5">
+                  <label className="text-xs text-[#B8A9C0] block mb-1.5 mt-3">Name *</label>
+                  <input
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g. Priya"
+                    className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[#B8A9C0] block mb-1.5">Date of birth *</label>
+                  <input
+                    type="date"
+                    required
+                    value={dob}
+                    onChange={(e) => setDob(e.target.value)}
+                    className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                  />
+                  {dob && age !== null && (
+                    <p className={`text-[11px] mt-1 ${age >= 18 ? "text-[#6B5B73]" : "text-[#FF4D6D]"}`}>
+                      {age >= 18 ? `Age ${age}` : "You must be 18 or older to join."}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="text-xs text-[#B8A9C0] block mb-1.5">Country *</label>
+                    <input
+                      required
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      placeholder="India"
+                      className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-[#B8A9C0] block mb-1.5">State *</label>
+                    <input
+                      required
+                      value={state}
+                      onChange={(e) => setStateVal(e.target.value)}
+                      placeholder="Uttar Pradesh"
+                      className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-[#B8A9C0] block mb-1.5">City *</label>
+                  <input
+                    required
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="Meerut"
+                    className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-[#B8A9C0] block mb-1.5">Mobile number *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={mobile}
+                    onChange={(e) => setMobile(e.target.value)}
+                    placeholder="10-digit number"
+                    className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                  />
+                  <p className="text-[10px] text-[#6B5B73] mt-1">
+                    Not verified yet in this test build — kept private either way.
+                  </p>
+                </div>
+                <div>
+                  <label className="text-xs text-[#B8A9C0] block mb-1.5">College (optional)</label>
+                  <input
+                    value={college}
+                    onChange={(e) => setCollege(e.target.value)}
+                    placeholder="e.g. DU, IIT Delhi"
+                    className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                  />
+                </div>
+              </>
+            )}
+
             {error && <p className="text-[#FF4D6D] text-xs">{error}</p>}
             <button
-              disabled={busy}
-              className="w-full py-3 rounded-full bg-[#FF4D6D] text-white text-sm font-medium disabled:opacity-50"
+              disabled={busy || (mode === "signup" && !signupValid)}
+              className="w-full py-3 rounded-full bg-[#FF4D6D] text-white text-sm font-medium disabled:opacity-40"
             >
               {busy
                 ? "Please wait..."
@@ -773,15 +953,6 @@ function AuthScreen() {
                 : "Send reset link"}
             </button>
           </form>
-        )}
-
-        {mode === "forgot-sent" && (
-          <button
-            onClick={() => setMode("login")}
-            className="w-full py-3 rounded-full border border-white/10 text-[#B8A9C0] text-sm"
-          >
-            Back to log in
-          </button>
         )}
 
         {(mode === "signup" || mode === "login") && (
@@ -832,18 +1003,12 @@ function ResetPasswordScreen({ onDone }) {
           <p className="text-[#4DD4C0] text-sm mt-4">Password updated. Taking you back in...</p>
         ) : (
           <form onSubmit={submit} className="space-y-4 mt-6">
-            <div>
-              <label className="text-xs text-[#B8A9C0] block mb-1.5">New password</label>
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 6 characters"
-                className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
-              />
-            </div>
+            <PasswordField
+              label="New password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 6 characters"
+            />
             {error && <p className="text-[#FF4D6D] text-xs">{error}</p>}
             <button
               disabled={busy}
@@ -859,21 +1024,22 @@ function ResetPasswordScreen({ onDone }) {
 }
 
 // ---------------- CREATE PROFILE (multi-step) ----------------
-function CreateProfile({ userId, onDone }) {
-  const [step, setStep] = useState(0); // 0 basics, 1 photos, 2 intents, 3 prompts, 4 review
-  const [name, setName] = useState("");
+function CreateProfile({ userId, initialData, onDone }) {
+  const [step, setStep] = useState(0); // 0 username/bio/gender, 1 photo, 2 intents, 3 prompts, 4 review
   const [username, setUsername] = useState("");
   const [usernameStatus, setUsernameStatus] = useState("");
-  const [age, setAge] = useState("");
-  const [college, setCollege] = useState("");
+  const [bio, setBio] = useState("");
   const [gender, setGender] = useState("");
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [intents, setIntents] = useState([]);
-  const [selectedPrompts, setSelectedPrompts] = useState([]); // [{q,a}]
+  const [intentOther, setIntentOther] = useState("");
+  const [selectedPrompts, setSelectedPrompts] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef(null);
+
+  const data = initialData || {};
 
   function toggleIntent(id) {
     setIntents((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -890,11 +1056,15 @@ function CreateProfile({ userId, onDone }) {
     }
     setUsernameStatus("checking");
     const timeout = setTimeout(async () => {
-      const { data } = await supabase.from("profiles").select("id").eq("username", username).maybeSingle();
-      setUsernameStatus(data ? "taken" : "available");
+      const { data: existing } = await supabase.from("profiles").select("id").eq("username", username).maybeSingle();
+      setUsernameStatus(existing ? "taken" : "available");
     }, 500);
     return () => clearTimeout(timeout);
   }, [username]);
+
+  function handleBioChange(val) {
+    if (wordCount(val) <= 101) setBio(val);
+  }
 
   async function handleFiles(e) {
     const files = Array.from(e.target.files || []).slice(0, 6 - photos.length);
@@ -905,8 +1075,8 @@ function CreateProfile({ userId, onDone }) {
       const path = `${userId}/${crypto.randomUUID()}.${ext}`;
       const { error } = await supabase.storage.from("avatars").upload(path, file);
       if (!error) {
-        const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-        setPhotos((prev) => [...prev, data.publicUrl]);
+        const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
+        setPhotos((prev) => [...prev, pub.publicUrl]);
       }
     }
     setUploading(false);
@@ -936,11 +1106,14 @@ function CreateProfile({ userId, onDone }) {
     setSelectedPrompts((prev) => prev.filter((_, i) => i !== index));
   }
 
-  const ageNum = parseInt(age, 10);
   const step0Valid =
-    name.trim() && college.trim() && username.length >= 3 && usernameStatus === "available" && ageNum >= 18 && ageNum < 100;
+    username.length >= 3 &&
+    usernameStatus === "available" &&
+    bio.trim().length > 0 &&
+    gender &&
+    (!intents.includes("other") || intentOther.trim());
   const step1Valid = photos.length >= 1;
-  const step2Valid = intents.length > 0;
+  const step2Valid = intents.length > 0 && (!intents.includes("other") || intentOther.trim());
 
   function canContinue() {
     if (step === 0) return step0Valid;
@@ -954,13 +1127,20 @@ function CreateProfile({ userId, onDone }) {
     setError("");
     const { error } = await supabase.from("profiles").insert({
       id: userId,
-      name,
+      name: data.name,
       username,
-      age: ageNum,
-      college,
+      dob: data.dob || null,
+      age: data.age,
+      country: data.country,
+      state: data.state,
+      city: data.city,
+      mobile: data.mobile,
+      college: data.college || null,
       gender,
+      bio,
       photos,
       intents,
+      intent_other: intents.includes("other") ? intentOther.trim() : null,
       prompts: selectedPrompts.filter((p) => p.a.trim()),
     });
     setBusy(false);
@@ -987,18 +1167,9 @@ function CreateProfile({ userId, onDone }) {
 
         {step === 0 && (
           <div className="space-y-4">
-            <h1 className="font-display text-2xl mb-1">The basics</h1>
+            <h1 className="font-display text-2xl mb-1">Almost there</h1>
             <div>
-              <label className="text-xs text-[#B8A9C0] block mb-1.5">Your name</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Priya"
-                className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-[#B8A9C0] block mb-1.5">Username</label>
+              <label className="text-xs text-[#B8A9C0] block mb-1.5">Username *</label>
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B5B73] text-sm">@</span>
                 <input
@@ -1017,30 +1188,23 @@ function CreateProfile({ userId, onDone }) {
                 <p className="text-[11px] text-[#FF4D6D] mt-1">At least 3 characters</p>
               )}
             </div>
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="text-xs text-[#B8A9C0] block mb-1.5">Age</label>
-                <input
-                  type="number"
-                  value={age}
-                  onChange={(e) => setAge(e.target.value)}
-                  placeholder="18+"
-                  className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
-                />
-              </div>
-              <div className="flex-[2]">
-                <label className="text-xs text-[#B8A9C0] block mb-1.5">College</label>
-                <input
-                  value={college}
-                  onChange={(e) => setCollege(e.target.value)}
-                  placeholder="e.g. DU, IIT Delhi"
-                  className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
-                />
-              </div>
-            </div>
-            {age && ageNum < 18 && <p className="text-[11px] text-[#FF4D6D]">Must be 18 or older to join.</p>}
+
             <div>
-              <label className="text-xs text-[#B8A9C0] block mb-1.5">Gender (optional)</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs text-[#B8A9C0]">Bio *</label>
+                <span className="text-[11px] text-[#6B5B73]">{wordCount(bio)}/101 words</span>
+              </div>
+              <textarea
+                value={bio}
+                onChange={(e) => handleBioChange(e.target.value)}
+                placeholder="Tell people a bit about you..."
+                rows={4}
+                className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D] resize-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-[#B8A9C0] block mb-1.5">Gender *</label>
               <div className="flex gap-2">
                 {["Woman", "Man", "Other"].map((g) => (
                   <button
@@ -1061,8 +1225,8 @@ function CreateProfile({ userId, onDone }) {
 
         {step === 1 && (
           <div>
-            <h1 className="font-display text-2xl mb-1">Add photos</h1>
-            <p className="text-sm text-[#B8A9C0] mb-4">At least 1, up to 6. Real photos build trust.</p>
+            <h1 className="font-display text-2xl mb-1">Profile photo</h1>
+            <p className="text-sm text-[#B8A9C0] mb-4">Required. Real photos build trust. You can add more later.</p>
             <div className="grid grid-cols-3 gap-2.5">
               {photos.map((url) => (
                 <div key={url} className="relative aspect-square rounded-xl overflow-hidden bg-[#2A1830]">
@@ -1129,6 +1293,14 @@ function CreateProfile({ userId, onDone }) {
                 );
               })}
             </div>
+            {intents.includes("other") && (
+              <input
+                value={intentOther}
+                onChange={(e) => setIntentOther(e.target.value)}
+                placeholder="Tell us what you're looking for..."
+                className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 mt-3 outline-none focus:border-[#FF4D6D]"
+              />
+            )}
           </div>
         )}
 
@@ -1184,15 +1356,17 @@ function CreateProfile({ userId, onDone }) {
             <p className="text-sm text-[#B8A9C0] mb-4">This is what others will see.</p>
             <div className="bg-[#2A1830] rounded-2xl overflow-hidden border border-white/5">
               <div className="aspect-[4/3]">
-                <Avatar profile={{ name, photos }} />
+                <Avatar profile={{ name: data.name, photos }} />
               </div>
               <div className="p-4">
                 <h2 className="font-display text-xl">
-                  {name}, {age}
+                  {data.name}, {data.age}
                 </h2>
                 <p className="text-xs text-[#B8A9C0]">
-                  @{username} · {college}
+                  @{username} · {data.city}, {data.state}
                 </p>
+                {data.college && <p className="text-xs text-[#6B5B73] mt-0.5">{data.college}</p>}
+                {bio && <p className="text-sm mt-3 text-[#F5EDE4]/90">{bio}</p>}
                 <div className="flex flex-wrap gap-1.5 mt-3">
                   {intents.map((id) => {
                     const meta = intentMeta(id);
@@ -1202,7 +1376,7 @@ function CreateProfile({ userId, onDone }) {
                         className="text-xs px-2.5 py-1 rounded-full"
                         style={{ backgroundColor: meta.color + "22", color: meta.color }}
                       >
-                        {meta.label}
+                        {id === "other" ? intentOther : meta.label}
                       </span>
                     );
                   })}
@@ -1239,572 +1413,6 @@ function CreateProfile({ userId, onDone }) {
             {step < 4 ? "Continue" : busy ? "Saving..." : "Enter Campus Circuit"}
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------- STORIES ----------------
-function StoriesBar({ profile }) {
-  const [groups, setGroups] = useState([]); // [{ profile, stories: [], allViewed }]
-  const [myStories, setMyStories] = useState([]);
-  const [viewerData, setViewerData] = useState(null); // { groups, startIndex }
-  const [showCreate, setShowCreate] = useState(false);
-  const fileInputRef = useRef(null);
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function load() {
-    const { data: stories } = await supabase
-      .from("stories")
-      .select("*, profiles(name, username, photos)")
-      .gt("expires_at", new Date().toISOString())
-      .order("created_at", { ascending: true });
-
-    const { data: views } = await supabase.from("story_views").select("story_id").eq("viewer_id", profile.id);
-    const viewedIds = new Set((views || []).map((v) => v.story_id));
-
-    const byUser = {};
-    (stories || []).forEach((s) => {
-      if (!byUser[s.user_id]) byUser[s.user_id] = { profile: s.profiles, userId: s.user_id, stories: [] };
-      byUser[s.user_id].stories.push(s);
-    });
-
-    const mine = byUser[profile.id]?.stories || [];
-    setMyStories(mine);
-
-    const others = Object.values(byUser)
-      .filter((g) => g.userId !== profile.id)
-      .map((g) => ({ ...g, allViewed: g.stories.every((s) => viewedIds.has(s.id)) }));
-    setGroups(others);
-  }
-
-  function openViewer(startIndex, includeMine) {
-    const all = includeMine ? [{ profile, userId: profile.id, stories: myStories }, ...groups] : groups;
-    setViewerData({ groups: all, startIndex });
-  }
-
-  async function handleUpload(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 20 * 1024 * 1024) {
-      alert("File too big — keep it under 20MB.");
-      return;
-    }
-    const mediaType = file.type.startsWith("video") ? "video" : "image";
-    const ext = file.name.split(".").pop();
-    const path = `${profile.id}/${crypto.randomUUID()}.${ext}`;
-    const { error } = await supabase.storage.from("stories").upload(path, file);
-    if (!error) {
-      const { data } = supabase.storage.from("stories").getPublicUrl(path);
-      await supabase.from("stories").insert({ user_id: profile.id, media_url: data.publicUrl, media_type: mediaType });
-      load();
-    }
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    setShowCreate(false);
-  }
-
-  return (
-    <div className="mb-5">
-      {viewerData && (
-        <StoryViewer
-          data={viewerData}
-          myId={profile.id}
-          onClose={() => {
-            setViewerData(null);
-            load();
-          }}
-        />
-      )}
-      <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleUpload} className="hidden" />
-
-      <div className="flex gap-3.5 overflow-x-auto pb-1 -mx-1 px-1">
-        <button
-          onClick={() => (myStories.length > 0 ? openViewer(0, true) : fileInputRef.current?.click())}
-          className="flex flex-col items-center gap-1.5 shrink-0"
-        >
-          <div className="relative w-14 h-14">
-            <div
-              className={`w-14 h-14 rounded-full p-[2px] ${
-                myStories.length > 0 ? "bg-gradient-to-br from-[#FF4D6D] to-[#FFB84D]" : "bg-white/10"
-              }`}
-            >
-              <div className="w-full h-full rounded-full overflow-hidden border-2 border-[#1B0F23]">
-                <Avatar profile={profile} textSize="text-lg" />
-              </div>
-            </div>
-            {myStories.length === 0 && (
-              <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#FF4D6D] flex items-center justify-center border-2 border-[#1B0F23]">
-                <Plus size={11} className="text-white" />
-              </div>
-            )}
-          </div>
-          <span className="text-[10px] text-[#B8A9C0]">Your story</span>
-        </button>
-
-        {groups.map((g, i) => (
-          <button
-            key={g.userId}
-            onClick={() => openViewer(myStories.length > 0 ? i + 1 : i, myStories.length > 0)}
-            className="flex flex-col items-center gap-1.5 shrink-0"
-          >
-            <div
-              className={`w-14 h-14 rounded-full p-[2px] ${
-                g.allViewed ? "bg-white/10" : "bg-gradient-to-br from-[#FF4D6D] to-[#FFB84D]"
-              }`}
-            >
-              <div className="w-full h-full rounded-full overflow-hidden border-2 border-[#1B0F23]">
-                <Avatar profile={g.profile} textSize="text-lg" />
-              </div>
-            </div>
-            <span className="text-[10px] text-[#B8A9C0] max-w-[56px] truncate">{g.profile?.name}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function StoryViewer({ data, myId, onClose }) {
-  const [groupIndex, setGroupIndex] = useState(data.startIndex);
-  const [storyIndex, setStoryIndex] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const timerRef = useRef(null);
-  const startRef = useRef(null);
-  const videoRef = useRef(null);
-
-  const group = data.groups[groupIndex];
-  const story = group?.stories[storyIndex];
-  const DURATION = 5000;
-
-  useEffect(() => {
-    if (!story) return;
-    setProgress(0);
-    markViewed(story.id);
-
-    if (story.media_type === "image") {
-      startRef.current = Date.now();
-      timerRef.current = setInterval(() => {
-        const pct = Math.min(100, ((Date.now() - startRef.current) / DURATION) * 100);
-        setProgress(pct);
-        if (pct >= 100) next();
-      }, 50);
-    }
-    return () => clearInterval(timerRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupIndex, storyIndex]);
-
-  async function markViewed(storyId) {
-    if (group.userId === myId) return;
-    await supabase.from("story_views").insert({ story_id: storyId, viewer_id: myId }).select().maybeSingle();
-  }
-
-  function next() {
-    clearInterval(timerRef.current);
-    if (storyIndex < group.stories.length - 1) {
-      setStoryIndex((i) => i + 1);
-    } else if (groupIndex < data.groups.length - 1) {
-      setGroupIndex((i) => i + 1);
-      setStoryIndex(0);
-    } else {
-      onClose();
-    }
-  }
-
-  function prev() {
-    clearInterval(timerRef.current);
-    if (storyIndex > 0) {
-      setStoryIndex((i) => i - 1);
-    } else if (groupIndex > 0) {
-      setGroupIndex((i) => i - 1);
-      setStoryIndex(0);
-    }
-  }
-
-  function handleVideoProgress() {
-    const v = videoRef.current;
-    if (!v || !v.duration) return;
-    setProgress((v.currentTime / v.duration) * 100);
-  }
-
-  if (!story) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black z-40 flex items-center justify-center">
-      <div className="w-full h-full max-w-md relative flex flex-col">
-        <div className="flex gap-1 px-3 pt-3">
-          {group.stories.map((_, i) => (
-            <div key={i} className="flex-1 h-0.5 bg-white/25 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-white"
-                style={{
-                  width: i < storyIndex ? "100%" : i === storyIndex ? `${progress}%` : "0%",
-                }}
-              />
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2.5 px-3 pt-3">
-          <div className="w-8 h-8 rounded-full overflow-hidden">
-            <Avatar profile={group.profile} textSize="text-sm" />
-          </div>
-          <span className="text-white text-sm font-medium">{group.profile?.name}</span>
-          <span className="text-white/60 text-xs">{timeAgo(story.created_at)}</span>
-          <button onClick={onClose} className="ml-auto text-white/80 p-1">
-            <X size={22} />
-          </button>
-        </div>
-
-        <div className="flex-1 relative mt-3">
-          <div className="absolute inset-0 flex">
-            <button className="w-1/3 h-full" onClick={prev} />
-            <button className="w-2/3 h-full" onClick={next} />
-          </div>
-          {story.media_type === "video" ? (
-            <video
-              ref={videoRef}
-              src={story.media_url}
-              autoPlay
-              playsInline
-              onTimeUpdate={handleVideoProgress}
-              onEnded={next}
-              className="w-full h-full object-contain"
-            />
-          ) : (
-            <img src={story.media_url} alt="" className="w-full h-full object-contain" />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------- FEED ----------------
-function FeedTab({ profile, onOpenProfile }) {
-  const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [reportTarget, setReportTarget] = useState(null);
-  const [myLikes, setMyLikes] = useState({});
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  async function load() {
-    setLoading(true);
-    const { data } = await supabase
-      .from("posts")
-      .select("*, profiles(name, username, photos)")
-      .order("created_at", { ascending: false });
-
-    const { data: allLikes } = await supabase.from("post_likes").select("post_id, user_id");
-    const counts = {};
-    (allLikes || []).forEach((l) => {
-      counts[l.post_id] = (counts[l.post_id] || 0) + 1;
-    });
-    const withCounts = (data || []).map((p) => ({ ...p, like_count: counts[p.id] || 0 }));
-    setPosts(withCounts);
-
-    const map = {};
-    (allLikes || []).filter((l) => l.user_id === profile.id).forEach((l) => (map[l.post_id] = true));
-    setMyLikes(map);
-    setLoading(false);
-  }
-
-  async function toggleLike(post) {
-    const liked = myLikes[post.id];
-    setMyLikes((prev) => ({ ...prev, [post.id]: !liked }));
-    setPosts((prev) =>
-      prev.map((p) => (p.id === post.id ? { ...p, like_count: (p.like_count || 0) + (liked ? -1 : 1) } : p))
-    );
-    if (liked) {
-      await supabase.from("post_likes").delete().eq("post_id", post.id).eq("user_id", profile.id);
-    } else {
-      await supabase.from("post_likes").insert({ post_id: post.id, user_id: profile.id });
-    }
-  }
-
-  return (
-    <div className="p-5">
-      {showCreate && (
-        <CreatePost
-          userId={profile.id}
-          onClose={() => setShowCreate(false)}
-          onPosted={() => {
-            setShowCreate(false);
-            load();
-          }}
-        />
-      )}
-      {reportTarget && (
-        <ReportModal
-          reporterId={profile.id}
-          targetType="post"
-          targetId={reportTarget}
-          onClose={() => setReportTarget(null)}
-        />
-      )}
-
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="font-display text-2xl">Feed</h1>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="w-9 h-9 rounded-full bg-[#FF4D6D] flex items-center justify-center text-white"
-        >
-          <Plus size={18} />
-        </button>
-      </div>
-
-      <StoriesBar profile={profile} />
-
-      {loading && <p className="text-center text-[#B8A9C0] text-sm py-8">loading feed...</p>}
-
-      {!loading && posts.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
-          <Grid3x3 size={32} className="text-[#6B5B73]" />
-          <p className="text-[#B8A9C0] text-sm">No posts yet. Be the first to share something.</p>
-        </div>
-      )}
-
-      <div className="space-y-5">
-        {posts.map((post) => (
-          <div key={post.id} className="bg-[#2A1830] rounded-2xl overflow-hidden border border-white/5">
-            <div className="flex items-center gap-2.5 p-3">
-              <button onClick={() => onOpenProfile(post.user_id)} className="w-8 h-8 rounded-full overflow-hidden shrink-0">
-                <Avatar profile={post.profiles} textSize="text-sm" />
-              </button>
-              <button onClick={() => onOpenProfile(post.user_id)} className="flex-1 min-w-0 text-left">
-                <p className="text-sm font-medium truncate">{post.profiles?.name}</p>
-                <p className="text-[11px] text-[#6B5B73]">@{post.profiles?.username}</p>
-              </button>
-              <button onClick={() => setReportTarget(post.id)} className="text-[#6B5B73] p-1">
-                <Flag size={15} />
-              </button>
-            </div>
-
-            <div className="bg-black">
-              {post.media_type === "video" ? (
-                <video src={post.media_url} controls className="w-full max-h-[480px] object-contain" />
-              ) : (
-                <img src={post.media_url} alt="" className="w-full max-h-[480px] object-cover" />
-              )}
-            </div>
-
-            <div className="p-3">
-              <button onClick={() => toggleLike(post)} className="flex items-center gap-1.5">
-                <Heart
-                  size={19}
-                  className={myLikes[post.id] ? "text-[#FF4D6D]" : "text-[#B8A9C0]"}
-                  fill={myLikes[post.id] ? "#FF4D6D" : "none"}
-                />
-                <span className="text-xs text-[#B8A9C0]">{post.like_count || 0}</span>
-              </button>
-              {post.caption && <p className="text-sm mt-2">{post.caption}</p>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CreatePost({ userId, onClose, onPosted }) {
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [mediaType, setMediaType] = useState(null);
-  const [caption, setCaption] = useState("");
-  const [visibility, setVisibility] = useState("public");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const fileInputRef = useRef(null);
-  const MAX_MB = 20;
-
-  function handlePick(e) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.size > MAX_MB * 1024 * 1024) {
-      setError(`File too big — keep it under ${MAX_MB}MB.`);
-      return;
-    }
-    setError("");
-    setFile(f);
-    setMediaType(f.type.startsWith("video") ? "video" : "image");
-    setPreview(URL.createObjectURL(f));
-  }
-
-  async function submit() {
-    if (!file) return;
-    setBusy(true);
-    setError("");
-    const ext = file.name.split(".").pop();
-    const path = `${userId}/${crypto.randomUUID()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from("posts").upload(path, file);
-    if (upErr) {
-      setBusy(false);
-      setError(upErr.message);
-      return;
-    }
-    const { data } = supabase.storage.from("posts").getPublicUrl(path);
-    const { error: insErr } = await supabase.from("posts").insert({
-      user_id: userId,
-      media_url: data.publicUrl,
-      media_type: mediaType,
-      caption: caption.trim() || null,
-      visibility,
-    });
-    setBusy(false);
-    if (insErr) {
-      setError(insErr.message);
-      return;
-    }
-    onPosted();
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/80 z-30 flex items-end sm:items-center justify-center px-4">
-      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-md p-5 max-h-[85vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display text-xl">New post</h2>
-          <button onClick={onClose} className="text-[#B8A9C0]">
-            <X size={20} />
-          </button>
-        </div>
-
-        {!preview && (
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full aspect-square rounded-xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-2 text-[#6B5B73]"
-          >
-            <div className="flex gap-3">
-              <Camera size={22} />
-              <Video size={22} />
-            </div>
-            <span className="text-xs">Tap to choose a photo or video</span>
-            <span className="text-[10px] text-[#6B5B73]">Max {MAX_MB}MB</span>
-          </button>
-        )}
-
-        {preview && (
-          <div className="rounded-xl overflow-hidden bg-black relative">
-            {mediaType === "video" ? (
-              <video src={preview} controls className="w-full max-h-72 object-contain" />
-            ) : (
-              <img src={preview} alt="" className="w-full max-h-72 object-cover" />
-            )}
-            <button
-              onClick={() => {
-                setFile(null);
-                setPreview(null);
-              }}
-              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 flex items-center justify-center"
-            >
-              <X size={15} className="text-white" />
-            </button>
-          </div>
-        )}
-
-        <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handlePick} className="hidden" />
-
-        <textarea
-          value={caption}
-          onChange={(e) => setCaption(e.target.value)}
-          placeholder="Write a caption (optional)..."
-          rows={2}
-          className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 mt-4 outline-none focus:border-[#FF4D6D] resize-none text-sm"
-        />
-
-        <div className="mt-4">
-          <p className="text-xs text-[#B8A9C0] mb-2">Who can see this?</p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setVisibility("public")}
-              className={`flex-1 py-2.5 rounded-xl border text-sm ${
-                visibility === "public"
-                  ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]"
-                  : "border-white/10 text-[#B8A9C0]"
-              }`}
-            >
-              Everyone
-            </button>
-            <button
-              onClick={() => setVisibility("matches_only")}
-              className={`flex-1 py-2.5 rounded-xl border text-sm ${
-                visibility === "matches_only"
-                  ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]"
-                  : "border-white/10 text-[#B8A9C0]"
-              }`}
-            >
-              Only my matches
-            </button>
-          </div>
-        </div>
-
-        {error && <p className="text-[#FF4D6D] text-xs mt-2">{error}</p>}
-
-        <button
-          disabled={!file || busy}
-          onClick={submit}
-          className="w-full py-3 rounded-full bg-[#FF4D6D] text-white text-sm font-medium disabled:opacity-30 mt-4"
-        >
-          {busy ? "Posting..." : "Share post"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ReportModal({ reporterId, targetType, targetId, onClose }) {
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-
-  async function submit() {
-    setBusy(true);
-    await supabase.from("reports").insert({
-      reporter_id: reporterId,
-      target_type: targetType,
-      target_id: String(targetId),
-      reason: reason.trim() || null,
-    });
-    setBusy(false);
-    setDone(true);
-    setTimeout(onClose, 1200);
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/80 z-30 flex items-center justify-center px-6">
-      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-xs p-5">
-        {done ? (
-          <p className="text-sm text-[#4DD4C0] text-center py-4">Report submitted. Thank you.</p>
-        ) : (
-          <>
-            <h3 className="font-display text-lg mb-1">Report this {targetType}</h3>
-            <p className="text-xs text-[#B8A9C0] mb-3">Tell us what's wrong — this stays confidential.</p>
-            <textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              rows={3}
-              placeholder="What's happening..."
-              className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#FF4D6D] resize-none"
-            />
-            <div className="flex gap-2 mt-4">
-              <button onClick={onClose} className="flex-1 py-2.5 rounded-full border border-white/10 text-[#B8A9C0] text-sm">
-                Cancel
-              </button>
-              <button
-                disabled={busy}
-                onClick={submit}
-                className="flex-1 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm disabled:opacity-50"
-              >
-                {busy ? "Sending..." : "Submit"}
-              </button>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );
@@ -1897,7 +1505,11 @@ function BrowseTab({ profile }) {
                 {current.name}
                 {current.age ? `, ${current.age}` : ""}
               </h2>
-              <p className="text-xs text-[#B8A9C0] mt-0.5">{current.college}</p>
+              <p className="text-xs text-[#B8A9C0] mt-0.5">
+                {current.city}
+                {current.college ? ` · ${current.college}` : ""}
+              </p>
+              {current.bio && <p className="text-sm mt-2 text-[#F5EDE4]/80 line-clamp-2">{current.bio}</p>}
               {(current.prompts || []).slice(0, 1).map((p, i) => (
                 <div key={i} className="mt-3">
                   <p className="text-[11px] text-[#6B5B73]">{p.q}</p>
@@ -1920,7 +1532,7 @@ function BrowseTab({ profile }) {
                           opacity: shared ? 1 : 0.55,
                         }}
                       >
-                        {meta.label}
+                        {id === "other" ? current.intent_other || "Other" : meta.label}
                       </span>
                     );
                   })}
@@ -2115,10 +1727,14 @@ function ProfileTab({ profile, onLogout, onUpdate }) {
             {profile.age ? `, ${profile.age}` : ""}
           </h2>
           <p className="text-xs text-[#B8A9C0] mt-0.5">
-            @{profile.username} · {profile.college}
+            @{profile.username} · {profile.city}
+            {profile.state ? `, ${profile.state}` : ""}
           </p>
+          {profile.college && <p className="text-[11px] text-[#6B5B73] mt-0.5">{profile.college}</p>}
         </div>
       </div>
+
+      {profile.bio && <p className="text-sm text-[#F5EDE4]/90 mb-5">{profile.bio}</p>}
 
       <div className="grid grid-cols-2 gap-2.5 mb-5">
         <button
@@ -2178,7 +1794,7 @@ function ProfileTab({ profile, onLogout, onUpdate }) {
                 className="text-xs px-2.5 py-1 rounded-full"
                 style={{ backgroundColor: meta.color + "22", color: meta.color }}
               >
-                {meta.label}
+                {id === "other" ? profile.intent_other || "Other" : meta.label}
               </span>
             );
           })}
@@ -2286,10 +1902,12 @@ function EditProfile({ profile, onDone, onCancel }) {
   const [name, setName] = useState(profile.name || "");
   const [age, setAge] = useState(profile.age ? String(profile.age) : "");
   const [college, setCollege] = useState(profile.college || "");
+  const [bio, setBio] = useState(profile.bio || "");
   const [gender, setGender] = useState(profile.gender || "");
   const [photos, setPhotos] = useState(profile.photos || []);
   const [uploading, setUploading] = useState(false);
   const [intents, setIntents] = useState(profile.intents || []);
+  const [intentOther, setIntentOther] = useState(profile.intent_other || "");
   const [selectedPrompts, setSelectedPrompts] = useState(profile.prompts || []);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2297,6 +1915,10 @@ function EditProfile({ profile, onDone, onCancel }) {
 
   function toggleIntent(id) {
     setIntents((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function handleBioChange(val) {
+    if (wordCount(val) <= 101) setBio(val);
   }
 
   async function handleFiles(e) {
@@ -2340,7 +1962,14 @@ function EditProfile({ profile, onDone, onCancel }) {
   }
 
   const ageNum = parseInt(age, 10);
-  const canSave = name.trim() && college.trim() && ageNum >= 18 && photos.length >= 1 && intents.length > 0;
+  const canSave =
+    name.trim() &&
+    ageNum >= 18 &&
+    photos.length >= 1 &&
+    intents.length > 0 &&
+    gender &&
+    bio.trim() &&
+    (!intents.includes("other") || intentOther.trim());
 
   async function save() {
     setBusy(true);
@@ -2350,10 +1979,12 @@ function EditProfile({ profile, onDone, onCancel }) {
       .update({
         name,
         age: ageNum,
-        college,
+        college: college || null,
+        bio,
         gender,
         photos,
         intents,
+        intent_other: intents.includes("other") ? intentOther.trim() : null,
         prompts: selectedPrompts.filter((p) => p.a.trim()),
       })
       .eq("id", profile.id);
@@ -2449,6 +2080,19 @@ function EditProfile({ profile, onDone, onCancel }) {
         </div>
 
         <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs text-[#B8A9C0]">Bio</label>
+            <span className="text-[11px] text-[#6B5B73]">{wordCount(bio)}/101 words</span>
+          </div>
+          <textarea
+            value={bio}
+            onChange={(e) => handleBioChange(e.target.value)}
+            rows={4}
+            className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D] resize-none"
+          />
+        </div>
+
+        <div>
           <p className="text-[11px] text-[#6B5B73] mb-2">looking for</p>
           <div className="grid grid-cols-1 gap-2">
             {INTENTS.map((intent) => {
@@ -2471,6 +2115,14 @@ function EditProfile({ profile, onDone, onCancel }) {
               );
             })}
           </div>
+          {intents.includes("other") && (
+            <input
+              value={intentOther}
+              onChange={(e) => setIntentOther(e.target.value)}
+              placeholder="Tell us what you're looking for..."
+              className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 mt-2.5 outline-none focus:border-[#FF4D6D]"
+            />
+          )}
         </div>
 
         <div>
