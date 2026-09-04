@@ -489,6 +489,8 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [postCount, setPostCount] = useState(null);
+  const [matchCount, setMatchCount] = useState(null);
+  const [crushCount, setCrushCount] = useState(null);
   const [lightbox, setLightbox] = useState(null);
   const [crushed, setCrushed] = useState(false);
   const [crushBusy, setCrushBusy] = useState(false);
@@ -510,6 +512,19 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
       .order("created_at", { ascending: false });
     setPosts(postData || []);
     setPostCount((postData || []).length);
+
+    const { count: mCount } = await supabase
+      .from("matches")
+      .select("*", { count: "exact", head: true })
+      .eq("is_official", true)
+      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`);
+    setMatchCount(mCount ?? 0);
+
+    const { count: cCount } = await supabase
+      .from("crushes")
+      .select("*", { count: "exact", head: true })
+      .eq("target_id", userId);
+    setCrushCount(cCount ?? 0);
 
     if (userId !== myId) {
       const { data: myCrush } = await supabase
@@ -654,8 +669,16 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
           </div>
         )}
 
-        <div className="mb-5">
-          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5 w-28">
+        <div className="grid grid-cols-3 gap-2.5 mb-5">
+          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
+            <p className="font-display text-lg">{matchCount === null ? "—" : matchCount}</p>
+            <p className="text-[10px] text-[#6B5B73] mt-0.5">Matches</p>
+          </div>
+          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
+            <p className="font-display text-lg">{crushCount === null ? "—" : crushCount}</p>
+            <p className="text-[10px] text-[#6B5B73] mt-0.5">Crushes</p>
+          </div>
+          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
             <p className="font-display text-lg">{postCount === null ? "—" : postCount}</p>
             <p className="text-[10px] text-[#6B5B73] mt-0.5">Posts</p>
           </div>
@@ -2439,7 +2462,7 @@ function ProfileTab({ profile, onLogout, onUpdate }) {
       </div>
 
       <p className="text-[10px] text-[#6B5B73] mb-5 px-1">
-        These numbers are only visible to you.
+        Matches, Posts &amp; Crushes counts are visible to everyone. Only you can see who they're from, and only you can see Impressions.
       </p>
 
       <button
