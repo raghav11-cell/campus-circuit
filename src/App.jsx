@@ -20,6 +20,13 @@ import {
   Video,
   Bell,
   Search,
+  Repeat2,
+  Share2,
+  Bookmark,
+  Pin,
+  AtSign,
+  Hash,
+  UserPlus,
 } from "lucide-react";
 
 const INTENTS = [
@@ -355,16 +362,39 @@ function NotificationsPanel({ myId, onClose, onRead, onNavigate }) {
 
   function messageFor(n) {
     const name = n.profiles?.name || "Someone";
-    if (n.type === "like") return `${name} liked you`;
+    if (n.type === "like") return `${name} has a crush on you`;
     if (n.type === "match") return `You matched with ${name}`;
     if (n.type === "message") return `${name} sent you a message`;
+    if (n.type === "comment") return `${name} commented on your post`;
+    if (n.type === "repost") return `${name} reposted your post`;
+    if (n.type === "tagged") return `${name} tagged you in a post`;
     return "";
   }
 
   function iconFor(type) {
     if (type === "like") return <Heart size={16} className="text-[#FF4D6D]" />;
     if (type === "match") return <Sparkles size={16} className="text-[#FFB84D]" />;
+    if (type === "comment") return <MessageCircle size={16} className="text-[#4DD4C0]" />;
+    if (type === "repost") return <Repeat2 size={16} className="text-[#4DD4C0]" />;
+    if (type === "tagged") return <UserPlus size={16} className="text-[#5DA9FF]" />;
     return <MessageCircle size={16} className="text-[#5DA9FF]" />;
+  }
+
+  async function confirmTag(n, accept) {
+    if (!n.post_id) return;
+    if (accept) {
+      const { data: post } = await supabase.from("posts").select("confirmed_tag_ids").eq("id", n.post_id).maybeSingle();
+      const next = Array.from(new Set([...(post?.confirmed_tag_ids || []), myId]));
+      await supabase.from("posts").update({ confirmed_tag_ids: next }).eq("id", n.post_id);
+    }
+    await supabase.from("notifications").delete().eq("id", n.id);
+    setItems((prev) => prev.filter((i) => i.id !== n.id));
+  }
+
+  function handleClick(n) {
+    if (n.type === "tagged" && n.post_id) return; // handled by confirm/decline buttons instead
+    const dest = n.type === "like" || n.type === "tagged" ? "profile" : "matches";
+    onNavigate(dest);
   }
 
   return (
@@ -382,20 +412,37 @@ function NotificationsPanel({ myId, onClose, onRead, onNavigate }) {
             <p className="text-center text-[#6B5B73] text-sm py-8">No notifications yet.</p>
           )}
           {items.map((n) => (
-            <button
-              key={n.id}
-              onClick={() => onNavigate(n.type === "like" ? "profile" : "matches")}
-              className="w-full flex items-center gap-3 px-5 py-3 border-b border-white/5 text-left hover:bg-white/5"
-            >
-              <div className="w-9 h-9 rounded-full overflow-hidden shrink-0">
-                <Avatar profile={n.profiles} textSize="text-sm" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm">{messageFor(n)}</p>
-                <p className="text-[11px] text-[#6B5B73] mt-0.5">{timeAgo(n.created_at)}</p>
-              </div>
-              {iconFor(n.type)}
-            </button>
+            <div key={n.id} className="border-b border-white/5">
+              <button
+                onClick={() => handleClick(n)}
+                className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-white/5"
+              >
+                <div className="w-9 h-9 rounded-full overflow-hidden shrink-0">
+                  <Avatar profile={n.profiles} textSize="text-sm" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm">{messageFor(n)}</p>
+                  <p className="text-[11px] text-[#6B5B73] mt-0.5">{timeAgo(n.created_at)}</p>
+                </div>
+                {iconFor(n.type)}
+              </button>
+              {n.type === "tagged" && n.post_id && (
+                <div className="flex gap-2 px-5 pb-3 -mt-1">
+                  <button
+                    onClick={() => confirmTag(n, true)}
+                    className="px-3 py-1.5 rounded-full bg-[#FF4D6D] text-white text-xs"
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    onClick={() => confirmTag(n, false)}
+                    className="px-3 py-1.5 rounded-full border border-white/10 text-[#B8A9C0] text-xs"
+                  >
+                    Decline
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </div>
@@ -495,6 +542,7 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
   const [crushed, setCrushed] = useState(false);
   const [crushBusy, setCrushBusy] = useState(false);
   const [startingChat, setStartingChat] = useState(false);
+  const [showCrushList, setShowCrushList] = useState(false);
 
   useEffect(() => {
     load();
@@ -513,12 +561,8 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
     setPosts(postData || []);
     setPostCount((postData || []).length);
 
-    const { count: mCount } = await supabase
-      .from("matches")
-      .select("*", { count: "exact", head: true })
-      .eq("is_official", true)
-      .or(`user1_id.eq.${userId},user2_id.eq.${userId}`);
-    setMatchCount(mCount ?? 0);
+    const { data: mCountData } = await supabase.rpc("get_match_count", { target_profile: userId });
+    setMatchCount(mCountData ?? 0);
 
     const { count: cCount } = await supabase
       .from("crushes")
@@ -674,15 +718,22 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
             <p className="font-display text-lg">{matchCount === null ? "—" : matchCount}</p>
             <p className="text-[10px] text-[#6B5B73] mt-0.5">Matches</p>
           </div>
-          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
+          <button
+            onClick={() => setShowCrushList(true)}
+            className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
+          >
             <p className="font-display text-lg">{crushCount === null ? "—" : crushCount}</p>
             <p className="text-[10px] text-[#6B5B73] mt-0.5">Crushes</p>
-          </div>
+          </button>
           <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
             <p className="font-display text-lg">{postCount === null ? "—" : postCount}</p>
             <p className="text-[10px] text-[#6B5B73] mt-0.5">Posts</p>
           </div>
         </div>
+
+        {showCrushList && (
+          <CrushListModal targetId={userId} onClose={() => setShowCrushList(false)} onOpenProfile={onOpenProfile} />
+        )}
 
         {(target.prompts || []).length > 0 && (
           <div className="space-y-3 mb-5">
@@ -746,6 +797,66 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
         ) : (
           <p className="text-center text-[#6B5B73] text-sm py-8">No posts to show.</p>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------- CRUSH LIST (public) ----------------
+function CrushListModal({ targetId, onClose, onOpenProfile }) {
+  const [people, setPeople] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("crushes").select("sender_id").eq("target_id", targetId);
+      const ids = (data || []).map((c) => c.sender_id);
+      if (ids.length === 0) {
+        setPeople([]);
+        setLoading(false);
+        return;
+      }
+      const { data: profs } = await supabase.from("profiles").select("*").in("id", ids);
+      setPeople(profs || []);
+      setLoading(false);
+    })();
+  }, [targetId]);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-40 flex items-end sm:items-center justify-center px-4">
+      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-md max-h-[70vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+          <h2 className="font-display text-xl">Crushes</h2>
+          <button onClick={onClose} className="text-[#B8A9C0]">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5">
+          {loading && <p className="text-center text-[#B8A9C0] text-sm py-6">loading...</p>}
+          {!loading && people.length === 0 && (
+            <p className="text-center text-[#6B5B73] text-sm py-6">No crushes yet.</p>
+          )}
+          <div className="space-y-2.5">
+            {people.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => {
+                  onClose();
+                  onOpenProfile(p.id);
+                }}
+                className="w-full flex items-center gap-3 bg-[#2A1830] rounded-xl p-3 border border-white/5 text-left"
+              >
+                <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
+                  <Avatar profile={p} textSize="text-base" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{p.name}</p>
+                  <p className="text-xs text-[#6B5B73]">@{p.username}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1791,6 +1902,9 @@ function FeedTab({ profile, onOpenProfile }) {
   const [showCreate, setShowCreate] = useState(false);
   const [reportTarget, setReportTarget] = useState(null);
   const [myLikes, setMyLikes] = useState({});
+  const [mySaves, setMySaves] = useState({});
+  const [myReposts, setMyReposts] = useState({});
+  const [openPost, setOpenPost] = useState(null);
 
   useEffect(() => {
     load();
@@ -1804,16 +1918,44 @@ function FeedTab({ profile, onOpenProfile }) {
       .order("created_at", { ascending: false });
 
     const { data: allLikes } = await supabase.from("post_likes").select("post_id, user_id");
-    const counts = {};
+    const likeCounts = {};
     (allLikes || []).forEach((l) => {
-      counts[l.post_id] = (counts[l.post_id] || 0) + 1;
+      likeCounts[l.post_id] = (likeCounts[l.post_id] || 0) + 1;
     });
-    const withCounts = (data || []).map((p) => ({ ...p, like_count: counts[p.id] || 0 }));
+
+    const { data: allComments } = await supabase.from("post_comments").select("post_id");
+    const commentCounts = {};
+    (allComments || []).forEach((c) => {
+      commentCounts[c.post_id] = (commentCounts[c.post_id] || 0) + 1;
+    });
+
+    const { data: allReposts } = await supabase.from("reposts").select("original_post_id, user_id");
+    const repostCounts = {};
+    (allReposts || []).forEach((r) => {
+      repostCounts[r.original_post_id] = (repostCounts[r.original_post_id] || 0) + 1;
+    });
+
+    const withCounts = (data || []).map((p) => ({
+      ...p,
+      like_count: likeCounts[p.id] || 0,
+      comment_count: commentCounts[p.id] || 0,
+      repost_count: repostCounts[p.id] || 0,
+    }));
     setPosts(withCounts);
 
-    const map = {};
-    (allLikes || []).filter((l) => l.user_id === profile.id).forEach((l) => (map[l.post_id] = true));
-    setMyLikes(map);
+    const likeMap = {};
+    (allLikes || []).filter((l) => l.user_id === profile.id).forEach((l) => (likeMap[l.post_id] = true));
+    setMyLikes(likeMap);
+
+    const repostMap = {};
+    (allReposts || []).filter((r) => r.user_id === profile.id).forEach((r) => (repostMap[r.original_post_id] = true));
+    setMyReposts(repostMap);
+
+    const { data: saves } = await supabase.from("saved_posts").select("post_id").eq("user_id", profile.id);
+    const saveMap = {};
+    (saves || []).forEach((s) => (saveMap[s.post_id] = true));
+    setMySaves(saveMap);
+
     setLoading(false);
   }
 
@@ -1827,6 +1969,39 @@ function FeedTab({ profile, onOpenProfile }) {
       await supabase.from("post_likes").delete().eq("post_id", post.id).eq("user_id", profile.id);
     } else {
       await supabase.from("post_likes").insert({ post_id: post.id, user_id: profile.id });
+    }
+  }
+
+  async function toggleSave(post) {
+    const saved = mySaves[post.id];
+    setMySaves((prev) => ({ ...prev, [post.id]: !saved }));
+    if (saved) {
+      await supabase.from("saved_posts").delete().eq("post_id", post.id).eq("user_id", profile.id);
+    } else {
+      await supabase.from("saved_posts").insert({ post_id: post.id, user_id: profile.id });
+    }
+  }
+
+  async function toggleRepost(post) {
+    const reposted = myReposts[post.id];
+    setMyReposts((prev) => ({ ...prev, [post.id]: !reposted }));
+    setPosts((prev) =>
+      prev.map((p) => (p.id === post.id ? { ...p, repost_count: (p.repost_count || 0) + (reposted ? -1 : 1) } : p))
+    );
+    if (reposted) {
+      await supabase.from("reposts").delete().eq("original_post_id", post.id).eq("user_id", profile.id);
+    } else {
+      await supabase.from("reposts").insert({ original_post_id: post.id, user_id: profile.id });
+    }
+  }
+
+  function sharePost(post) {
+    const url = post.media_url;
+    if (navigator.share) {
+      navigator.share({ title: "Campus Circuit", text: post.caption || "Check this out", url }).catch(() => {});
+    } else {
+      navigator.clipboard?.writeText(url);
+      alert("Link copied!");
     }
   }
 
@@ -1848,6 +2023,17 @@ function FeedTab({ profile, onOpenProfile }) {
           targetType="post"
           targetId={reportTarget}
           onClose={() => setReportTarget(null)}
+        />
+      )}
+      {openPost && (
+        <PostDetail
+          post={openPost}
+          myId={profile.id}
+          onClose={() => {
+            setOpenPost(null);
+            load();
+          }}
+          onOpenProfile={onOpenProfile}
         />
       )}
 
@@ -1888,24 +2074,47 @@ function FeedTab({ profile, onOpenProfile }) {
               </button>
             </div>
 
-            <div className="bg-black">
+            <button className="block w-full bg-black" onClick={() => setOpenPost(post)}>
               {post.media_type === "video" ? (
                 <video src={post.media_url} controls className="w-full max-h-[480px] object-contain" />
               ) : (
                 <img src={post.media_url} alt="" className="w-full max-h-[480px] object-cover" />
               )}
-            </div>
+            </button>
 
             <div className="p-3">
-              <button onClick={() => toggleLike(post)} className="flex items-center gap-1.5">
-                <Heart
-                  size={19}
-                  className={myLikes[post.id] ? "text-[#FF4D6D]" : "text-[#B8A9C0]"}
-                  fill={myLikes[post.id] ? "#FF4D6D" : "none"}
-                />
-                <span className="text-xs text-[#B8A9C0]">{post.like_count || 0}</span>
-              </button>
-              {post.caption && <p className="text-sm mt-2">{post.caption}</p>}
+              <div className="flex items-center gap-4">
+                <button onClick={() => toggleLike(post)} className="flex items-center gap-1.5">
+                  <Heart
+                    size={19}
+                    className={myLikes[post.id] ? "text-[#FF4D6D]" : "text-[#B8A9C0]"}
+                    fill={myLikes[post.id] ? "#FF4D6D" : "none"}
+                  />
+                  <span className="text-xs text-[#B8A9C0]">{post.like_count || 0}</span>
+                </button>
+                <button onClick={() => setOpenPost(post)} className="flex items-center gap-1.5">
+                  <MessageCircle size={18} className="text-[#B8A9C0]" />
+                  <span className="text-xs text-[#B8A9C0]">{post.comment_count || 0}</span>
+                </button>
+                <button onClick={() => toggleRepost(post)} className="flex items-center gap-1.5">
+                  <Repeat2 size={19} className={myReposts[post.id] ? "text-[#4DD4C0]" : "text-[#B8A9C0]"} />
+                  <span className="text-xs text-[#B8A9C0]">{post.repost_count || 0}</span>
+                </button>
+                <button onClick={() => sharePost(post)} className="text-[#B8A9C0]">
+                  <Share2 size={17} />
+                </button>
+                <button onClick={() => toggleSave(post)} className="ml-auto text-[#B8A9C0]">
+                  <Bookmark size={17} fill={mySaves[post.id] ? "#F5EDE4" : "none"} />
+                </button>
+              </div>
+              {post.caption && (
+                <p className="text-sm mt-2">
+                  <span className="font-medium">{post.profiles?.name}</span> {post.caption}
+                </p>
+              )}
+              {(post.hashtags || []).length > 0 && (
+                <p className="text-xs text-[#5DA9FF] mt-1">{post.hashtags.map((h) => `#${h}`).join(" ")}</p>
+              )}
             </div>
           </div>
         ))}
@@ -1922,8 +2131,15 @@ function CreatePost({ userId, onClose, onPosted }) {
   const [visibility, setVisibility] = useState("public");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [taggedUsers, setTaggedUsers] = useState([]); // [{id, name, username}]
+  const [showTagPicker, setShowTagPicker] = useState(false);
   const fileInputRef = useRef(null);
   const MAX_MB = 20;
+
+  function extractHashtags(text) {
+    const matches = text.match(/#([a-zA-Z0-9_]+)/g) || [];
+    return [...new Set(matches.map((h) => h.slice(1).toLowerCase()))];
+  }
 
   function handlePick(e) {
     const f = e.target.files?.[0];
@@ -1957,6 +2173,8 @@ function CreatePost({ userId, onClose, onPosted }) {
       media_type: mediaType,
       caption: caption.trim() || null,
       visibility,
+      tagged_user_ids: taggedUsers.map((u) => u.id),
+      hashtags: extractHashtags(caption),
     });
     setBusy(false);
     if (insErr) {
@@ -2014,10 +2232,26 @@ function CreatePost({ userId, onClose, onPosted }) {
         <textarea
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
-          placeholder="Write a caption (optional)..."
+          placeholder="Write a caption... use #hashtags too"
           rows={2}
           className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 mt-4 outline-none focus:border-[#FF4D6D] resize-none text-sm"
         />
+
+        <button
+          onClick={() => setShowTagPicker(true)}
+          className="w-full flex items-center gap-2 text-sm text-[#B8A9C0] mt-2.5 py-1"
+        >
+          <UserPlus size={15} />
+          {taggedUsers.length > 0 ? `Tagged: ${taggedUsers.map((u) => "@" + u.username).join(", ")}` : "Tag people"}
+        </button>
+
+        {showTagPicker && (
+          <TagPeoplePicker
+            selected={taggedUsers}
+            onChange={setTaggedUsers}
+            onClose={() => setShowTagPicker(false)}
+          />
+        )}
 
         <div className="mt-4">
           <p className="text-xs text-[#B8A9C0] mb-2">Who can see this?</p>
@@ -2054,6 +2288,357 @@ function CreatePost({ userId, onClose, onPosted }) {
         >
           {busy ? "Posting..." : "Share post"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- TAG PEOPLE PICKER ----------------
+function TagPeoplePicker({ selected, onChange, onClose }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      const q = query.trim();
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, name, username, photos")
+        .or(`name.ilike.%${q}%,username.ilike.%${q}%`)
+        .limit(15);
+      setResults(data || []);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  function toggle(p) {
+    const exists = selected.find((u) => u.id === p.id);
+    if (exists) {
+      onChange(selected.filter((u) => u.id !== p.id));
+    } else {
+      onChange([...selected, { id: p.id, name: p.name, username: p.username }]);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-40 flex items-end sm:items-center justify-center px-4">
+      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-md p-5 max-h-[75vh] flex flex-col">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-display text-lg">Tag people</h3>
+          <button onClick={onClose} className="text-[#B8A9C0]">
+            <X size={20} />
+          </button>
+        </div>
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name or @username"
+          className="w-full bg-[#2A1830] border border-white/10 rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D] mb-3"
+        />
+        <div className="overflow-y-auto flex-1 space-y-2">
+          {results.map((p) => {
+            const isSelected = selected.some((u) => u.id === p.id);
+            return (
+              <button
+                key={p.id}
+                onClick={() => toggle(p)}
+                className={`w-full flex items-center gap-3 rounded-xl p-2.5 border text-left ${
+                  isSelected ? "bg-[#FF4D6D]/15 border-[#FF4D6D]" : "bg-[#2A1830] border-white/5"
+                }`}
+              >
+                <div className="w-9 h-9 rounded-full overflow-hidden shrink-0">
+                  <Avatar profile={p} textSize="text-sm" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm">{p.name}</p>
+                  <p className="text-xs text-[#6B5B73]">@{p.username}</p>
+                </div>
+                {isSelected && <Check size={16} className="text-[#FF4D6D]" />}
+              </button>
+            );
+          })}
+        </div>
+        <button onClick={onClose} className="w-full mt-3 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm">
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- POST DETAIL (comments) ----------------
+function PostDetail({ post, myId, onClose, onOpenProfile }) {
+  const [comments, setComments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [text, setText] = useState("");
+  const [replyTo, setReplyTo] = useState(null); // { id, username }
+  const [commentLikes, setCommentLikes] = useState({});
+  const [menuFor, setMenuFor] = useState(null);
+  const [reportTarget, setReportTarget] = useState(null);
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(post.like_count || 0);
+  const isPostOwner = myId === post.user_id;
+  const pinnedCount = comments.filter((c) => c.pinned).length;
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supabase
+      .from("post_comments")
+      .select("*, profiles(name, username, photos)")
+      .eq("post_id", post.id)
+      .order("created_at", { ascending: true });
+    setComments(data || []);
+
+    const ids = (data || []).map((c) => c.id);
+    if (ids.length > 0) {
+      const { data: likes } = await supabase.from("comment_likes").select("comment_id, user_id").in("comment_id", ids);
+      const counts = {};
+      const mine = {};
+      (likes || []).forEach((l) => {
+        counts[l.comment_id] = (counts[l.comment_id] || 0) + 1;
+        if (l.user_id === myId) mine[l.comment_id] = true;
+      });
+      setCommentLikes({ counts, mine });
+    }
+
+    const { data: myLike } = await supabase
+      .from("post_likes")
+      .select("id")
+      .eq("post_id", post.id)
+      .eq("user_id", myId)
+      .maybeSingle();
+    setLiked(!!myLike);
+
+    setLoading(false);
+  }
+
+  async function toggleLike() {
+    if (liked) {
+      setLiked(false);
+      setLikeCount((c) => c - 1);
+      await supabase.from("post_likes").delete().eq("post_id", post.id).eq("user_id", myId);
+    } else {
+      setLiked(true);
+      setLikeCount((c) => c + 1);
+      await supabase.from("post_likes").insert({ post_id: post.id, user_id: myId });
+    }
+  }
+
+  async function sendComment() {
+    if (!text.trim()) return;
+    const content = text.trim();
+    setText("");
+    setReplyTo(null);
+    await supabase.from("post_comments").insert({
+      post_id: post.id,
+      user_id: myId,
+      content,
+      parent_comment_id: replyTo?.id || null,
+    });
+    load();
+  }
+
+  async function toggleCommentLike(comment) {
+    const isLiked = commentLikes.mine?.[comment.id];
+    if (isLiked) {
+      await supabase.from("comment_likes").delete().eq("comment_id", comment.id).eq("user_id", myId);
+    } else {
+      await supabase.from("comment_likes").insert({ comment_id: comment.id, user_id: myId });
+    }
+    load();
+  }
+
+  async function deleteComment(comment) {
+    await supabase.from("post_comments").delete().eq("id", comment.id);
+    setMenuFor(null);
+    load();
+  }
+
+  async function toggleHide(comment) {
+    await supabase.from("post_comments").update({ hidden: !comment.hidden }).eq("id", comment.id);
+    setMenuFor(null);
+    load();
+  }
+
+  async function togglePin(comment) {
+    if (!comment.pinned && pinnedCount >= 2) {
+      alert("You can pin up to 2 comments only.");
+      setMenuFor(null);
+      return;
+    }
+    await supabase.from("post_comments").update({ pinned: !comment.pinned }).eq("id", comment.id);
+    setMenuFor(null);
+    load();
+  }
+
+  const topLevel = comments.filter((c) => !c.parent_comment_id && (!c.hidden || isPostOwner));
+  const pinned = topLevel.filter((c) => c.pinned);
+  const rest = topLevel.filter((c) => !c.pinned);
+  const ordered = [...pinned, ...rest];
+  const repliesFor = (id) => comments.filter((c) => c.parent_comment_id === id && (!c.hidden || isPostOwner));
+
+  function CommentRow({ comment, isReply }) {
+    const count = commentLikes.counts?.[comment.id] || 0;
+    const isLiked = commentLikes.mine?.[comment.id];
+    const mine = comment.user_id === myId;
+    return (
+      <div className={`flex gap-2.5 ${isReply ? "ml-9 mt-2.5" : "mt-4"}`}>
+        <button onClick={() => onOpenProfile(comment.user_id)} className="w-7 h-7 rounded-full overflow-hidden shrink-0">
+          <Avatar profile={comment.profiles} textSize="text-xs" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="bg-[#2A1830] rounded-xl px-3 py-2">
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => onOpenProfile(comment.user_id)} className="text-xs font-medium">
+                {comment.profiles?.name}
+              </button>
+              {comment.pinned && <Pin size={10} className="text-[#FFB84D]" />}
+              {comment.hidden && <span className="text-[9px] text-[#6B5B73]">(hidden)</span>}
+            </div>
+            <p className="text-sm mt-0.5 break-words">{comment.content}</p>
+          </div>
+          <div className="flex items-center gap-3 mt-1 px-1">
+            <span className="text-[10px] text-[#6B5B73]">{timeAgo(comment.created_at)}</span>
+            <button onClick={() => toggleCommentLike(comment)} className="flex items-center gap-1">
+              <Heart size={11} className={isLiked ? "text-[#FF4D6D]" : "text-[#6B5B73]"} fill={isLiked ? "#FF4D6D" : "none"} />
+              {count > 0 && <span className="text-[10px] text-[#6B5B73]">{count}</span>}
+            </button>
+            <button
+              onClick={() => setReplyTo({ id: comment.id, username: comment.profiles?.username })}
+              className="text-[10px] text-[#6B5B73]"
+            >
+              Reply
+            </button>
+            <button onClick={() => setMenuFor(menuFor === comment.id ? null : comment.id)} className="text-[10px] text-[#6B5B73]">
+              •••
+            </button>
+          </div>
+          {menuFor === comment.id && (
+            <div className="flex flex-wrap gap-2 mt-1.5 px-1">
+              {(mine || isPostOwner) && (
+                <button onClick={() => deleteComment(comment)} className="text-[10px] text-[#FF4D6D]">
+                  Delete
+                </button>
+              )}
+              {isPostOwner && (
+                <button onClick={() => toggleHide(comment)} className="text-[10px] text-[#B8A9C0]">
+                  {comment.hidden ? "Unhide" : "Hide"}
+                </button>
+              )}
+              {isPostOwner && (
+                <button onClick={() => togglePin(comment)} className="text-[10px] text-[#B8A9C0]">
+                  {comment.pinned ? "Unpin" : "Pin"}
+                </button>
+              )}
+              <button onClick={() => setReportTarget(comment.id)} className="text-[10px] text-[#B8A9C0]">
+                Report
+              </button>
+            </div>
+          )}
+          {!isReply &&
+            repliesFor(comment.id).map((r) => <CommentRow key={r.id} comment={r} isReply />)}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-[#1B0F23] z-40 flex flex-col">
+      {reportTarget && (
+        <ReportModal
+          reporterId={myId}
+          targetType="comment"
+          targetId={reportTarget}
+          onClose={() => setReportTarget(null)}
+        />
+      )}
+      <div className="max-w-md mx-auto w-full flex-1 flex flex-col overflow-hidden">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
+          <button onClick={onClose} className="text-[#B8A9C0]">
+            <ArrowLeft size={20} />
+          </button>
+          <span className="font-display text-lg">Post</span>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="flex items-center gap-2.5 p-3">
+            <button onClick={() => onOpenProfile(post.user_id)} className="w-8 h-8 rounded-full overflow-hidden shrink-0">
+              <Avatar profile={post.profiles} textSize="text-sm" />
+            </button>
+            <button onClick={() => onOpenProfile(post.user_id)} className="text-left">
+              <p className="text-sm font-medium">{post.profiles?.name}</p>
+              <p className="text-[11px] text-[#6B5B73]">@{post.profiles?.username}</p>
+            </button>
+          </div>
+
+          <div className="bg-black">
+            {post.media_type === "video" ? (
+              <video src={post.media_url} controls className="w-full max-h-[420px] object-contain" />
+            ) : (
+              <img src={post.media_url} alt="" className="w-full max-h-[420px] object-cover" />
+            )}
+          </div>
+
+          <div className="p-3 border-b border-white/5">
+            <button onClick={toggleLike} className="flex items-center gap-1.5">
+              <Heart size={19} className={liked ? "text-[#FF4D6D]" : "text-[#B8A9C0]"} fill={liked ? "#FF4D6D" : "none"} />
+              <span className="text-xs text-[#B8A9C0]">{likeCount}</span>
+            </button>
+            {post.caption && (
+              <p className="text-sm mt-2">
+                <span className="font-medium">{post.profiles?.name}</span> {post.caption}
+              </p>
+            )}
+            {(post.hashtags || []).length > 0 && (
+              <p className="text-xs text-[#5DA9FF] mt-1">{post.hashtags.map((h) => `#${h}`).join(" ")}</p>
+            )}
+          </div>
+
+          <div className="px-3 pb-4">
+            {loading && <p className="text-center text-[#B8A9C0] text-sm py-6">loading comments...</p>}
+            {!loading && ordered.length === 0 && (
+              <p className="text-center text-[#6B5B73] text-sm py-6">No comments yet. Say something.</p>
+            )}
+            {ordered.map((c) => (
+              <CommentRow key={c.id} comment={c} />
+            ))}
+          </div>
+        </div>
+
+        <div className="p-3 border-t border-white/5">
+          {replyTo && (
+            <div className="flex items-center justify-between px-1 pb-1.5">
+              <span className="text-[11px] text-[#6B5B73]">Replying to @{replyTo.username}</span>
+              <button onClick={() => setReplyTo(null)} className="text-[11px] text-[#6B5B73]">
+                Cancel
+              </button>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendComment()}
+              placeholder="Add a comment... use @username to tag"
+              className="flex-1 bg-[#2A1830] border border-white/10 rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D]"
+            />
+            <button
+              onClick={sendComment}
+              className="w-10 h-10 rounded-full bg-[#FF4D6D] flex items-center justify-center text-white shrink-0"
+            >
+              <Send size={16} />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -2338,6 +2923,7 @@ function ProfileTab({ profile, onLogout, onUpdate }) {
   const [impressions, setImpressions] = useState(null);
   const [view, setView] = useState("main"); // main | edit | settings
   const [lightbox, setLightbox] = useState(null);
+  const [showCrushList, setShowCrushList] = useState(false);
 
   useEffect(() => {
     loadStats();
@@ -2451,18 +3037,25 @@ function ProfileTab({ profile, onLogout, onUpdate }) {
           <p className="font-display text-xl">{postCount === null ? "—" : postCount}</p>
           <p className="text-[11px] text-[#6B5B73] mt-0.5">Posts</p>
         </div>
-        <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
+        <button
+          onClick={() => setShowCrushList(true)}
+          className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
+        >
           <p className="font-display text-xl">{crushCount === null ? "—" : crushCount}</p>
           <p className="text-[11px] text-[#6B5B73] mt-0.5">Crushes</p>
-        </div>
+        </button>
         <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
           <p className="font-display text-xl">{impressions === null ? "—" : impressions}</p>
           <p className="text-[11px] text-[#6B5B73] mt-0.5">Impressions</p>
         </div>
       </div>
 
+      {showCrushList && (
+        <CrushListModal targetId={profile.id} onClose={() => setShowCrushList(false)} onOpenProfile={() => {}} />
+      )}
+
       <p className="text-[10px] text-[#6B5B73] mb-5 px-1">
-        Matches, Posts &amp; Crushes counts are visible to everyone. Only you can see who they're from, and only you can see Impressions.
+        Matches &amp; Posts counts, and Impressions, are only visible to you. Crushes (count and who) are public.
       </p>
 
       <button
@@ -2502,8 +3095,8 @@ function ProfileTab({ profile, onLogout, onUpdate }) {
       </div>
 
       {photos.length > 0 && (
-        <div>
-          <p className="text-[11px] text-[#6B5B73] mb-2">your photos</p>
+        <div className="mb-5">
+          <p className="text-[11px] text-[#6B5B73] mb-2">profile photos</p>
           <div className="grid grid-cols-3 gap-1.5">
             {photos.map((url) => (
               <button
@@ -2518,11 +3111,138 @@ function ProfileTab({ profile, onLogout, onUpdate }) {
         </div>
       )}
 
+      <OwnPostsSection profileId={profile.id} pinnedIds={profile.pinned_post_ids || []} onUpdate={onUpdate} />
+
       <div className="flex items-start gap-2 mt-6 px-1 pb-4">
         <ShieldCheck size={14} className="text-[#6B5B73] mt-0.5 shrink-0" />
         <p className="text-[11px] text-[#6B5B73]">
           This is a test build for your college. Full version will add ID verification before wider launch.
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- OWN POSTS (grid / repost / tagged, with pinning) ----------------
+function OwnPostsSection({ profileId, pinnedIds, onUpdate }) {
+  const [tab, setTab] = useState("posts"); // posts | reposts | tagged
+  const [posts, setPosts] = useState([]);
+  const [reposts, setReposts] = useState([]);
+  const [tagged, setTagged] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [lightbox, setLightbox] = useState(null);
+
+  useEffect(() => {
+    load();
+  }, [tab]);
+
+  async function load() {
+    setLoading(true);
+    if (tab === "posts") {
+      const { data } = await supabase
+        .from("posts")
+        .select("*")
+        .eq("user_id", profileId)
+        .order("created_at", { ascending: false });
+      setPosts(data || []);
+    } else if (tab === "reposts") {
+      const { data } = await supabase
+        .from("reposts")
+        .select("*, posts(*)")
+        .eq("user_id", profileId)
+        .order("created_at", { ascending: false });
+      setReposts(data || []);
+    } else {
+      const { data } = await supabase
+        .from("posts")
+        .select("*")
+        .contains("confirmed_tag_ids", [profileId])
+        .order("created_at", { ascending: false });
+      setTagged(data || []);
+    }
+    setLoading(false);
+  }
+
+  async function togglePin(postId) {
+    const isPinned = pinnedIds.includes(postId);
+    let next;
+    if (isPinned) {
+      next = pinnedIds.filter((id) => id !== postId);
+    } else {
+      if (pinnedIds.length >= 3) {
+        alert("You can pin up to 3 posts only.");
+        return;
+      }
+      next = [...pinnedIds, postId];
+    }
+    await supabase.from("profiles").update({ pinned_post_ids: next }).eq("id", profileId);
+    onUpdate();
+  }
+
+  const list = tab === "posts" ? posts : tab === "reposts" ? reposts.map((r) => r.posts) : tagged;
+  const orderedList =
+    tab === "posts"
+      ? [...list].sort((a, b) => (pinnedIds.includes(b.id) ? 1 : 0) - (pinnedIds.includes(a.id) ? 1 : 0))
+      : list;
+
+  return (
+    <div>
+      {lightbox && (
+        <div
+          className="fixed inset-0 bg-black/90 z-30 flex items-center justify-center px-4"
+          onClick={() => setLightbox(null)}
+        >
+          {lightbox.media_type === "video" ? (
+            <video src={lightbox.media_url} controls autoPlay className="max-h-[80vh] max-w-full rounded-xl" />
+          ) : (
+            <img src={lightbox.media_url} alt="" className="max-h-[80vh] max-w-full rounded-xl object-contain" />
+          )}
+        </div>
+      )}
+
+      <div className="flex border-t border-b border-white/5 mb-2">
+        {[
+          { id: "posts", icon: Grid3x3 },
+          { id: "reposts", icon: Repeat2 },
+          { id: "tagged", icon: UserPlus },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex-1 py-2.5 flex items-center justify-center border-b-2 ${
+              tab === t.id ? "border-[#FF4D6D] text-[#FF4D6D]" : "border-transparent text-[#6B5B73]"
+            }`}
+          >
+            <t.icon size={18} />
+          </button>
+        ))}
+      </div>
+
+      {loading && <p className="text-center text-[#6B5B73] text-sm py-6">loading...</p>}
+      {!loading && orderedList.length === 0 && (
+        <p className="text-center text-[#6B5B73] text-sm py-6">Nothing here yet.</p>
+      )}
+
+      <div className="grid grid-cols-3 gap-1.5">
+        {orderedList.filter(Boolean).map((post) => (
+          <div key={post.id} className="relative aspect-square rounded-lg overflow-hidden bg-[#2A1830] group">
+            <button onClick={() => setLightbox(post)} className="w-full h-full">
+              {post.media_type === "video" ? (
+                <video src={post.media_url} className="w-full h-full object-cover" />
+              ) : (
+                <img src={post.media_url} alt="" className="w-full h-full object-cover" />
+              )}
+            </button>
+            {tab === "posts" && (
+              <button
+                onClick={() => togglePin(post.id)}
+                className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center"
+              >
+                <Pin size={12} className={pinnedIds.includes(post.id) ? "text-[#FFB84D]" : "text-white"} />
+              </button>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -2883,6 +3603,7 @@ function EditProfile({ profile, onDone, onCancel }) {
 function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
   const [showDetails, setShowDetails] = useState(profile.show_details || false);
   const [saving, setSaving] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
 
   async function toggle() {
     const next = !showDetails;
@@ -2891,6 +3612,10 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
     await supabase.from("profiles").update({ show_details: next }).eq("id", profile.id);
     setSaving(false);
     onUpdate();
+  }
+
+  if (showSaved) {
+    return <SavedPostsScreen myId={profile.id} onBack={() => setShowSaved(false)} />;
   }
 
   return (
@@ -2929,6 +3654,13 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
 
       <div className="space-y-2.5">
         <button
+          onClick={() => setShowSaved(true)}
+          className="w-full flex items-center gap-3 bg-[#2A1830] rounded-xl p-4 text-left border border-white/5"
+        >
+          <Bookmark size={18} className="text-[#B8A9C0]" />
+          <span className="text-sm">Saved posts</span>
+        </button>
+        <button
           onClick={onLogout}
           className="w-full flex items-center gap-3 bg-[#2A1830] rounded-xl p-4 text-left border border-white/5"
         >
@@ -2941,6 +3673,67 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
         Need to delete your account or report a problem? That's not automated yet in this test build —
         reach out to whoever invited you to the pilot.
       </p>
+    </div>
+  );
+}
+
+// ---------------- SAVED POSTS ----------------
+function SavedPostsScreen({ myId, onBack }) {
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [lightbox, setLightbox] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from("saved_posts")
+        .select("post_id, posts(*)")
+        .eq("user_id", myId)
+        .order("created_at", { ascending: false });
+      setPosts((data || []).map((s) => s.posts).filter(Boolean));
+      setLoading(false);
+    })();
+  }, [myId]);
+
+  return (
+    <div className="p-5">
+      {lightbox && (
+        <div
+          className="fixed inset-0 bg-black/90 z-30 flex items-center justify-center px-4"
+          onClick={() => setLightbox(null)}
+        >
+          {lightbox.media_type === "video" ? (
+            <video src={lightbox.media_url} controls autoPlay className="max-h-[80vh] max-w-full rounded-xl" />
+          ) : (
+            <img src={lightbox.media_url} alt="" className="max-h-[80vh] max-w-full rounded-xl object-contain" />
+          )}
+        </div>
+      )}
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={onBack} className="text-[#B8A9C0]">
+          <ArrowLeft size={20} />
+        </button>
+        <h1 className="font-display text-2xl">Saved posts</h1>
+      </div>
+      {loading && <p className="text-center text-[#6B5B73] text-sm py-6">loading...</p>}
+      {!loading && posts.length === 0 && (
+        <p className="text-center text-[#6B5B73] text-sm py-8">No saved posts yet.</p>
+      )}
+      <div className="grid grid-cols-3 gap-1.5">
+        {posts.map((post) => (
+          <button
+            key={post.id}
+            onClick={() => setLightbox(post)}
+            className="aspect-square rounded-lg overflow-hidden bg-[#2A1830]"
+          >
+            {post.media_type === "video" ? (
+              <video src={post.media_url} className="w-full h-full object-cover" />
+            ) : (
+              <img src={post.media_url} alt="" className="w-full h-full object-cover" />
+            )}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -3161,3 +3954,4 @@ function ChatRoom({ match, myId, onBack }) {
     </div>
   );
 }
+
