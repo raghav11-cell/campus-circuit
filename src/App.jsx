@@ -225,10 +225,10 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#1B0F23] text-[#F5EDE4] font-sans flex flex-col">
+    <div className="h-screen bg-[#1B0F23] text-[#F5EDE4] font-sans flex flex-col overflow-hidden">
       <style>{fontStyles}</style>
 
-      <header className="px-5 pt-5 pb-3 flex items-center justify-between border-b border-white/5 max-w-md mx-auto w-full">
+      <header className="px-5 pt-5 pb-3 flex items-center justify-between border-b border-white/5 max-w-md mx-auto w-full shrink-0">
         <div className="flex items-center gap-2">
           <Sparkles size={18} className="text-[#FFB84D]" />
           <span className="font-display text-lg tracking-tight">Campus Circuit</span>
@@ -304,12 +304,12 @@ export default function App() {
       </main>
 
       {tab !== "chatroom" && (
-        <nav className="flex border-t border-white/5 bg-[#1B0F23] max-w-md mx-auto w-full">
+        <nav className="flex border-t border-white/5 bg-[#1B0F23] max-w-md mx-auto w-full shrink-0">
           {[
             { id: "feed", icon: Grid3x3, label: "Feed" },
             { id: "browse", icon: Heart, label: "Browse" },
-            { id: "matches", icon: MessageCircle, label: "Matches" },
-            { id: "profile", icon: User, label: "You" },
+            { id: "matches", icon: MessageCircle, label: "Message" },
+            { id: "profile", icon: User, label: "Account" },
           ].map((t) => (
             <button
               key={t.id}
