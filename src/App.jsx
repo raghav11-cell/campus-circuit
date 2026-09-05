@@ -1905,10 +1905,36 @@ function FeedTab({ profile, onOpenProfile }) {
   const [mySaves, setMySaves] = useState({});
   const [myReposts, setMyReposts] = useState({});
   const [openPost, setOpenPost] = useState(null);
+  const seenIds = useRef(new Set());
+  const markedRef = useRef(new Set());
+  const observerRef = useRef(null);
 
   useEffect(() => {
     load();
+    return () => observerRef.current?.disconnect();
   }, []);
+
+  function observePost(node, postId) {
+    if (!node) return;
+    if (!observerRef.current) {
+      observerRef.current = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              const id = entry.target.dataset.postId;
+              if (id && !markedRef.current.has(id)) {
+                markedRef.current.add(id);
+                supabase.from("post_views").insert({ post_id: id, viewer_id: profile.id }).then(() => {});
+              }
+            }
+          });
+        },
+        { threshold: 0.6 }
+      );
+    }
+    node.dataset.postId = postId;
+    observerRef.current.observe(node);
+  }
 
   async function load() {
     setLoading(true);
@@ -1916,6 +1942,10 @@ function FeedTab({ profile, onOpenProfile }) {
       .from("posts")
       .select("*, profiles(name, username, photos)")
       .order("created_at", { ascending: false });
+
+    const { data: myViews } = await supabase.from("post_views").select("post_id").eq("viewer_id", profile.id);
+    const seenSet = new Set((myViews || []).map((v) => v.post_id));
+    seenIds.current = seenSet;
 
     const { data: allLikes } = await supabase.from("post_likes").select("post_id, user_id");
     const likeCounts = {};
@@ -1940,8 +1970,14 @@ function FeedTab({ profile, onOpenProfile }) {
       like_count: likeCounts[p.id] || 0,
       comment_count: commentCounts[p.id] || 0,
       repost_count: repostCounts[p.id] || 0,
+      _seen: seenSet.has(p.id),
     }));
-    setPosts(withCounts);
+
+    // Unseen posts first (newest first), already-seen posts after (newest first) —
+    // so the feed doesn't keep resurfacing the same posts once you've viewed them.
+    const unseen = withCounts.filter((p) => !p._seen);
+    const seen = withCounts.filter((p) => p._seen);
+    setPosts([...unseen, ...seen]);
 
     const likeMap = {};
     (allLikes || []).filter((l) => l.user_id === profile.id).forEach((l) => (likeMap[l.post_id] = true));
@@ -2060,7 +2096,11 @@ function FeedTab({ profile, onOpenProfile }) {
 
       <div className="space-y-5">
         {posts.map((post) => (
-          <div key={post.id} className="bg-[#2A1830] rounded-2xl overflow-hidden border border-white/5">
+          <div
+            key={post.id}
+            ref={(node) => observePost(node, post.id)}
+            className="bg-[#2A1830] rounded-2xl overflow-hidden border border-white/5"
+          >
             <div className="flex items-center gap-2.5 p-3">
               <button onClick={() => onOpenProfile(post.user_id)} className="w-8 h-8 rounded-full overflow-hidden shrink-0">
                 <Avatar profile={post.profiles} textSize="text-sm" />
@@ -2387,6 +2427,7 @@ function PostDetail({ post, myId, onClose, onOpenProfile }) {
 
   useEffect(() => {
     load();
+    supabase.from("post_views").insert({ post_id: post.id, viewer_id: myId }).then(() => {});
   }, []);
 
   async function load() {
@@ -3954,4 +3995,3 @@ function ChatRoom({ match, myId, onBack }) {
     </div>
   );
 }
-
