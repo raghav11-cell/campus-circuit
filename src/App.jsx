@@ -116,7 +116,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("feed");
+  const [tab, setTab] = useState("browse");
   const [activeChat, setActiveChat] = useState(null);
   const [recoveryMode, setRecoveryMode] = useState(false);
   const [showIntro, setShowIntro] = useState(false);
@@ -287,8 +287,8 @@ export default function App() {
       )}
 
       <main className="flex-1 overflow-y-auto max-w-md mx-auto w-full">
-        {tab === "feed" && <FeedTab profile={profile} onOpenProfile={setViewingProfileId} />}
         {tab === "browse" && <BrowseTab profile={profile} />}
+        {tab === "explore" && <FeedTab profile={profile} onOpenProfile={setViewingProfileId} />}
         {tab === "matches" && (
           <MatchesTab
             myId={profile.id}
@@ -314,9 +314,9 @@ export default function App() {
       {tab !== "chatroom" && (
         <nav className="flex border-t border-white/5 bg-[#1B0F23] max-w-md mx-auto w-full shrink-0">
           {[
-            { id: "feed", icon: Grid3x3, label: "Feed" },
             { id: "browse", icon: Heart, label: "Browse" },
             { id: "matches", icon: MessageCircle, label: "Message" },
+            { id: "explore", icon: Grid3x3, label: "Explore" },
             { id: "profile", icon: User, label: "Account" },
           ].map((t) => (
             <button
@@ -769,7 +769,7 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-2.5 mb-5">
+        <div className="grid grid-cols-2 gap-2.5 mb-5">
           <button
             onClick={() => setShowCrushList("hunt")}
             className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
@@ -784,10 +784,6 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
             <p className="font-display text-lg">{huntedCount === null ? "—" : huntedCount}</p>
             <p className="text-[10px] text-[#6B5B73] mt-0.5">Hunted</p>
           </button>
-          <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
-            <p className="font-display text-lg">{postCount === null ? "—" : postCount}</p>
-            <p className="text-[10px] text-[#6B5B73] mt-0.5">Post</p>
-          </div>
         </div>
 
         {showCrushList && (
@@ -828,38 +824,21 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
           </div>
         </div>
 
-        {!isMe && posts.length > 0 && (
-          <p className="text-[11px] text-[#6B5B73] mb-5">
-            Posts marked "matches only" will only show here if you and {target.name} have matched.
-          </p>
-        )}
-
-        {posts.length > 0 ? (
+        {(target.photos || []).length > 0 && (
           <div>
-            <p className="text-[11px] text-[#6B5B73] mb-2">posts</p>
+            <p className="text-[11px] text-[#6B5B73] mb-2">photos</p>
             <div className="grid grid-cols-3 gap-1.5">
-              {posts.map((post) => (
+              {target.photos.map((url) => (
                 <button
-                  key={post.id}
-                  onClick={() => setLightbox({ ...post, profiles: target })}
-                  className="aspect-square rounded-lg overflow-hidden bg-[#2A1830] relative"
+                  key={url}
+                  onClick={() => setLightbox({ url, type: "image" })}
+                  className="aspect-square rounded-lg overflow-hidden bg-[#2A1830]"
                 >
-                  {post.media_type === "video" ? (
-                    <video src={post.media_url} className="w-full h-full object-cover" />
-                  ) : (
-                    <img src={post.media_url} alt="" className="w-full h-full object-cover" />
-                  )}
-                  {post.visibility === "matches_only" && (
-                    <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center">
-                      <ShieldCheck size={11} className="text-white" />
-                    </div>
-                  )}
+                  <img src={url} alt="" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>
           </div>
-        ) : (
-          <p className="text-center text-[#6B5B73] text-sm py-8">No posts to show.</p>
         )}
       </div>
       {lightbox && lightbox.media_url && (
@@ -3293,7 +3272,7 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
 
       {profile.bio && <p className="text-sm text-[#F5EDE4]/90 mb-5">{profile.bio}</p>}
 
-      <div className="grid grid-cols-3 gap-2.5 mb-2">
+      <div className="grid grid-cols-2 gap-2.5 mb-2">
         <button
           onClick={() => setShowCrushList("hunt")}
           className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
@@ -3308,10 +3287,6 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
           <p className="font-display text-xl">{huntedCount === null ? "—" : huntedCount}</p>
           <p className="text-[11px] text-[#6B5B73] mt-0.5">Hunted</p>
         </button>
-        <div className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5">
-          <p className="font-display text-xl">{postCount === null ? "—" : postCount}</p>
-          <p className="text-[11px] text-[#6B5B73] mt-0.5">Post</p>
-        </div>
       </div>
 
       {profile.show_impressions && (
@@ -3375,13 +3350,22 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
         </div>
       </div>
 
-      <OwnPostsSection
-        profileId={profile.id}
-        pinnedIds={profile.pinned_post_ids || []}
-        onUpdate={onUpdate}
-        myId={profile.id}
-        onOpenProfile={onOpenProfile}
-      />
+      {(profile.photos || []).length > 0 && (
+        <div className="mb-5">
+          <p className="text-[11px] text-[#6B5B73] mb-2">your photos</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {profile.photos.map((url) => (
+              <button
+                key={url}
+                onClick={() => setLightbox(url)}
+                className="aspect-square rounded-lg overflow-hidden bg-[#2A1830]"
+              >
+                <img src={url} alt="" className="w-full h-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-start gap-2 mt-6 px-1 pb-4">
         <ShieldCheck size={14} className="text-[#6B5B73] mt-0.5 shrink-0" />
