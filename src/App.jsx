@@ -75,7 +75,7 @@ function PasswordField({ value, onChange, placeholder, label }) {
   const [show, setShow] = useState(false);
   return (
     <div>
-      {label && <label className="text-xs text-[#B8A9C0] block mb-1.5">{label}</label>}
+      {label && <label className="text-xs text-[var(--cc-muted)] block mb-1.5">{label}</label>}
       <div className="relative">
         <input
           type={show ? "text" : "password"}
@@ -84,12 +84,12 @@ function PasswordField({ value, onChange, placeholder, label }) {
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 pr-12 outline-none focus:border-[#FF4D6D]"
+          className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 pr-12 outline-none focus:border-[#FF4D6D]"
         />
         <button
           type="button"
           onClick={() => setShow((s) => !s)}
-          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#6B5B73] text-xs"
+          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--cc-dim)] text-xs"
         >
           {show ? "Hide" : "Show"}
         </button>
@@ -105,7 +105,7 @@ function Avatar({ profile, size = "w-full h-full", textSize = "text-5xl" }) {
   }
   return (
     <div className={`${size} flex items-center justify-center bg-gradient-to-br from-[#FF4D6D]/30 via-[#C77DFF]/20 to-[#5DA9FF]/20`}>
-      <span className={`font-display ${textSize} text-[#F5EDE4]/90`}>
+      <span className={`font-display ${textSize} text-[var(--cc-text)]/90`}>
         {profile?.name?.[0]?.toUpperCase() || "?"}
       </span>
     </div>
@@ -196,8 +196,8 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#1B0F23]">
-        <p className="text-[#B8A9C0] text-sm">loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-[var(--cc-bg)]">
+        <p className="text-[var(--cc-muted)] text-sm">loading...</p>
       </div>
     );
   }
@@ -226,7 +226,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen bg-[#1B0F23] text-[#F5EDE4] font-sans flex flex-col overflow-hidden">
+    <div className="h-screen bg-[var(--cc-bg)] text-[var(--cc-text)] font-sans flex flex-col overflow-hidden">
       <style>{fontStyles}</style>
 
       <header className="px-5 pt-5 pb-3 flex items-center justify-between border-b border-white/5 max-w-md mx-auto w-full shrink-0">
@@ -235,10 +235,10 @@ export default function App() {
           <span className="font-display text-lg tracking-tight">Campus Circuit</span>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => setShowSearch(true)} className="text-[#B8A9C0]">
+          <button onClick={() => setShowSearch(true)} className="text-[var(--cc-muted)]">
             <Search size={20} />
           </button>
-          <button onClick={() => setShowNotifications(true)} className="relative text-[#B8A9C0]">
+          <button onClick={() => setShowNotifications(true)} className="relative text-[var(--cc-muted)]">
             <Bell size={20} />
             {unreadCount > 0 && (
               <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-[#FF4D6D] text-white text-[10px] flex items-center justify-center">
@@ -246,7 +246,7 @@ export default function App() {
               </span>
             )}
           </button>
-          <div className="text-xs text-[#B8A9C0]">{profile.college}</div>
+          <div className="text-xs text-[var(--cc-muted)]">{profile.college}</div>
         </div>
       </header>
 
@@ -312,7 +312,7 @@ export default function App() {
       </main>
 
       {tab !== "chatroom" && (
-        <nav className="flex border-t border-white/5 bg-[#1B0F23] max-w-md mx-auto w-full shrink-0">
+        <nav className="flex border-t border-white/5 bg-[var(--cc-bg)] max-w-md mx-auto w-full shrink-0">
           {[
             { id: "browse", icon: Heart, label: "Browse" },
             { id: "matches", icon: MessageCircle, label: "Message" },
@@ -323,7 +323,7 @@ export default function App() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className={`flex-1 py-3 flex flex-col items-center gap-1 transition-colors ${
-                tab === t.id ? "text-[#FF4D6D]" : "text-[#6B5B73]"
+                tab === t.id ? "text-[#FF4D6D]" : "text-[var(--cc-dim)]"
               }`}
             >
               <t.icon size={20} />
@@ -370,12 +370,13 @@ function NotificationsPanel({ myId, onClose, onRead, onNavigate }) {
 
   function messageFor(n) {
     const name = n.profiles?.name || "Someone";
-    if (n.type === "like") return `${name} has a crush on you`;
+    if (n.type === "like") return `${name} hunted you`;
     if (n.type === "match") return `You matched with ${name}`;
     if (n.type === "message") return `${name} sent you a message`;
     if (n.type === "comment") return `${name} commented on your post`;
     if (n.type === "repost") return `${name} reposted your post`;
     if (n.type === "tagged") return `${name} tagged you in a post`;
+    if (n.type === "saved") return `${name} saved your post`;
     return "";
   }
 
@@ -385,6 +386,7 @@ function NotificationsPanel({ myId, onClose, onRead, onNavigate }) {
     if (type === "comment") return <MessageCircle size={16} className="text-[#4DD4C0]" />;
     if (type === "repost") return <Repeat2 size={16} className="text-[#4DD4C0]" />;
     if (type === "tagged") return <UserPlus size={16} className="text-[#5DA9FF]" />;
+    if (type === "saved") return <Bookmark size={16} className="text-[#FFB84D]" />;
     return <MessageCircle size={16} className="text-[#5DA9FF]" />;
   }
 
@@ -407,17 +409,17 @@ function NotificationsPanel({ myId, onClose, onRead, onNavigate }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 z-30 flex items-start justify-center px-4 pt-16">
-      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-md max-h-[75vh] overflow-hidden flex flex-col">
+      <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-md max-h-[75vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
           <h2 className="font-display text-xl">Notifications</h2>
-          <button onClick={onClose} className="text-[#B8A9C0]">
+          <button onClick={onClose} className="text-[var(--cc-muted)]">
             <X size={20} />
           </button>
         </div>
         <div className="overflow-y-auto flex-1">
-          {loading && <p className="text-center text-[#B8A9C0] text-sm py-8">loading...</p>}
+          {loading && <p className="text-center text-[var(--cc-muted)] text-sm py-8">loading...</p>}
           {!loading && items.length === 0 && (
-            <p className="text-center text-[#6B5B73] text-sm py-8">No notifications yet.</p>
+            <p className="text-center text-[var(--cc-dim)] text-sm py-8">No notifications yet.</p>
           )}
           {items.map((n) => (
             <div key={n.id} className="border-b border-white/5">
@@ -430,7 +432,7 @@ function NotificationsPanel({ myId, onClose, onRead, onNavigate }) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm">{messageFor(n)}</p>
-                  <p className="text-[11px] text-[#6B5B73] mt-0.5">{timeAgo(n.created_at)}</p>
+                  <p className="text-[11px] text-[var(--cc-dim)] mt-0.5">{timeAgo(n.created_at)}</p>
                 </div>
                 {iconFor(n.type)}
               </button>
@@ -444,7 +446,7 @@ function NotificationsPanel({ myId, onClose, onRead, onNavigate }) {
                   </button>
                   <button
                     onClick={() => confirmTag(n, false)}
-                    className="px-3 py-1.5 rounded-full border border-white/10 text-[#B8A9C0] text-xs"
+                    className="px-3 py-1.5 rounded-full border border-white/10 text-[var(--cc-muted)] text-xs"
                   >
                     Decline
                   </button>
@@ -484,10 +486,10 @@ function SearchScreen({ onClose, onOpenProfile }) {
   }, [query]);
 
   return (
-    <div className="fixed inset-0 bg-[#1B0F23] z-30 flex flex-col">
+    <div className="fixed inset-0 bg-[var(--cc-bg)] z-30 flex flex-col">
       <div className="max-w-md mx-auto w-full flex-1 flex flex-col">
         <div className="flex items-center gap-3 px-5 pt-5 pb-3">
-          <button onClick={onClose} className="text-[#B8A9C0]">
+          <button onClick={onClose} className="text-[var(--cc-muted)]">
             <ArrowLeft size={20} />
           </button>
           <div className="flex-1 relative">
@@ -497,29 +499,29 @@ function SearchScreen({ onClose, onOpenProfile }) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by name or @username"
-              className="w-full bg-[#2A1830] border border-white/10 rounded-full pl-9 pr-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D]"
+              className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-full pl-9 pr-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D]"
             />
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5">
-          {loading && <p className="text-center text-[#B8A9C0] text-sm py-8">searching...</p>}
+          {loading && <p className="text-center text-[var(--cc-muted)] text-sm py-8">searching...</p>}
           {!loading && query.trim() && results.length === 0 && (
-            <p className="text-center text-[#6B5B73] text-sm py-8">No one found.</p>
+            <p className="text-center text-[var(--cc-dim)] text-sm py-8">No one found.</p>
           )}
           <div className="space-y-2.5 pb-6">
             {results.map((p) => (
               <button
                 key={p.id}
                 onClick={() => onOpenProfile(p.id)}
-                className="w-full flex items-center gap-3 bg-[#2A1830] rounded-xl p-3 border border-white/5 text-left"
+                className="w-full flex items-center gap-3 bg-[var(--cc-surface)] rounded-xl p-3 border border-white/5 text-left"
               >
                 <div className="w-11 h-11 rounded-full overflow-hidden shrink-0">
                   <Avatar profile={p} textSize="text-lg" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">{p.name}</p>
-                  <p className="text-xs text-[#6B5B73]">
+                  <p className="text-xs text-[var(--cc-dim)]">
                     @{p.username} · {p.college}
                   </p>
                 </div>
@@ -534,7 +536,7 @@ function SearchScreen({ onClose, onOpenProfile }) {
 
 function SearchIcon() {
   return (
-    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#6B5B73]" />
+    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--cc-dim)]" />
   );
 }
 
@@ -650,16 +652,16 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-[#1B0F23] z-30 flex items-center justify-center">
-        <p className="text-[#B8A9C0] text-sm">loading...</p>
+      <div className="fixed inset-0 bg-[var(--cc-bg)] z-30 flex items-center justify-center">
+        <p className="text-[var(--cc-muted)] text-sm">loading...</p>
       </div>
     );
   }
 
   if (!target) {
     return (
-      <div className="fixed inset-0 bg-[#1B0F23] z-30 flex flex-col items-center justify-center gap-3">
-        <p className="text-[#B8A9C0] text-sm">Profile not found.</p>
+      <div className="fixed inset-0 bg-[var(--cc-bg)] z-30 flex flex-col items-center justify-center gap-3">
+        <p className="text-[var(--cc-muted)] text-sm">Profile not found.</p>
         <button onClick={onBack} className="text-[#FF4D6D] text-sm">
           Go back
         </button>
@@ -670,7 +672,7 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
   const isMe = userId === myId;
 
   return (
-    <div className="fixed inset-0 bg-[#1B0F23] z-30 overflow-y-auto">
+    <div className="fixed inset-0 bg-[var(--cc-bg)] z-30 overflow-y-auto">
       {lightbox && lightbox.url && (
         <div
           className="fixed inset-0 bg-black/90 z-40 flex items-center justify-center px-4"
@@ -686,7 +688,7 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
 
       <div className="max-w-md mx-auto w-full p-5">
         <div className="flex items-center gap-3 mb-5">
-          <button onClick={onBack} className="text-[#B8A9C0]">
+          <button onClick={onBack} className="text-[var(--cc-muted)]">
             <ArrowLeft size={20} />
           </button>
           <h1 className="font-display text-xl">@{target.username}</h1>
@@ -707,7 +709,7 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
               {target.show_details && target.age ? `, ${target.age}` : ""}
             </h2>
             {target.show_details && (target.city || target.college) && (
-              <p className="text-xs text-[#B8A9C0] mt-0.5">
+              <p className="text-xs text-[var(--cc-muted)] mt-0.5">
                 {target.city}
                 {target.college ? ` · ${target.college}` : ""}
               </p>
@@ -717,7 +719,7 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
 
         {showPhotoChoice && (
           <div className="fixed inset-0 bg-black/70 z-40 flex items-end sm:items-center justify-center px-6" onClick={() => setShowPhotoChoice(false)}>
-            <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-xs p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-xs p-4" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() => {
                   setShowPhotoChoice(false);
@@ -744,7 +746,7 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
           <SingleUserStoryViewer userId={userId} myId={myId} profile={target} onClose={() => setShowStoryViewer(false)} />
         )}
 
-        {target.bio && <p className="text-sm text-[#F5EDE4]/90 mb-5">{target.bio}</p>}
+        {target.bio && <p className="text-sm text-[var(--cc-text)]/90 mb-5">{target.bio}</p>}
 
         {!isMe && (
           <div className="flex gap-2.5 mb-5">
@@ -752,7 +754,7 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
               onClick={toggleCrush}
               disabled={crushBusy}
               className={`flex-1 py-2.5 rounded-full border text-sm flex items-center justify-center gap-1.5 ${
-                crushed ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]" : "border-white/10 text-[#B8A9C0]"
+                crushed ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]" : "border-white/10 text-[var(--cc-muted)]"
               }`}
             >
               <Heart size={15} fill={crushed ? "#FF4D6D" : "none"} />
@@ -772,17 +774,17 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
         <div className="grid grid-cols-2 gap-2.5 mb-5">
           <button
             onClick={() => setShowCrushList("hunt")}
-            className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
+            className="bg-[var(--cc-surface)] rounded-xl py-3 text-center border border-white/5"
           >
             <p className="font-display text-lg">{huntCount === null ? "—" : huntCount}</p>
-            <p className="text-[10px] text-[#6B5B73] mt-0.5">Hunt</p>
+            <p className="text-[10px] text-[var(--cc-dim)] mt-0.5">Hunt</p>
           </button>
           <button
             onClick={() => setShowCrushList("hunted")}
-            className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
+            className="bg-[var(--cc-surface)] rounded-xl py-3 text-center border border-white/5"
           >
             <p className="font-display text-lg">{huntedCount === null ? "—" : huntedCount}</p>
-            <p className="text-[10px] text-[#6B5B73] mt-0.5">Hunted</p>
+            <p className="text-[10px] text-[var(--cc-dim)] mt-0.5">Hunted</p>
           </button>
         </div>
 
@@ -798,7 +800,7 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
         {(target.prompts || []).length > 0 && (
           <div className="space-y-3 mb-5">
             {target.prompts.map((p, i) => (
-              <div key={i} className="bg-[#2A1830] rounded-xl p-4 border border-white/5">
+              <div key={i} className="bg-[var(--cc-surface)] rounded-xl p-4 border border-white/5">
                 <p className="text-[11px] text-[#FFB84D]">{p.q}</p>
                 <p className="text-sm mt-1">{p.a}</p>
               </div>
@@ -807,7 +809,7 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
         )}
 
         <div className="mb-5">
-          <p className="text-[11px] text-[#6B5B73] mb-2">looking for</p>
+          <p className="text-[11px] text-[var(--cc-dim)] mb-2">looking for</p>
           <div className="flex flex-wrap gap-1.5">
             {(target.intents || []).map((id) => {
               const meta = intentMeta(id);
@@ -826,13 +828,13 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
 
         {(target.photos || []).length > 0 && (
           <div>
-            <p className="text-[11px] text-[#6B5B73] mb-2">photos</p>
+            <p className="text-[11px] text-[var(--cc-dim)] mb-2">photos</p>
             <div className="grid grid-cols-3 gap-1.5">
               {target.photos.map((url) => (
                 <button
                   key={url}
                   onClick={() => setLightbox({ url, type: "image" })}
-                  className="aspect-square rounded-lg overflow-hidden bg-[#2A1830]"
+                  className="aspect-square rounded-lg overflow-hidden bg-[var(--cc-surface)]"
                 >
                   <img src={url} alt="" className="w-full h-full object-cover" />
                 </button>
@@ -881,17 +883,17 @@ function CrushListModal({ targetId, mode, onClose, onOpenProfile }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 z-40 flex items-end sm:items-center justify-center px-4">
-      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-md max-h-[70vh] overflow-hidden flex flex-col">
+      <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-md max-h-[70vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
           <h2 className="font-display text-xl">{isHunted ? "Hunted by" : "Hunting"}</h2>
-          <button onClick={onClose} className="text-[#B8A9C0]">
+          <button onClick={onClose} className="text-[var(--cc-muted)]">
             <X size={20} />
           </button>
         </div>
         <div className="overflow-y-auto flex-1 p-5">
-          {loading && <p className="text-center text-[#B8A9C0] text-sm py-6">loading...</p>}
+          {loading && <p className="text-center text-[var(--cc-muted)] text-sm py-6">loading...</p>}
           {!loading && people.length === 0 && (
-            <p className="text-center text-[#6B5B73] text-sm py-6">Nothing here yet.</p>
+            <p className="text-center text-[var(--cc-dim)] text-sm py-6">Nothing here yet.</p>
           )}
           <div className="space-y-2.5">
             {people.map((p) => (
@@ -901,14 +903,14 @@ function CrushListModal({ targetId, mode, onClose, onOpenProfile }) {
                   onClose();
                   onOpenProfile(p.id);
                 }}
-                className="w-full flex items-center gap-3 bg-[#2A1830] rounded-xl p-3 border border-white/5 text-left"
+                className="w-full flex items-center gap-3 bg-[var(--cc-surface)] rounded-xl p-3 border border-white/5 text-left"
               >
                 <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
                   <Avatar profile={p} textSize="text-base" />
                 </div>
                 <div>
                   <p className="text-sm font-medium">{p.name}</p>
-                  <p className="text-xs text-[#6B5B73]">@{p.username}</p>
+                  <p className="text-xs text-[var(--cc-dim)]">@{p.username}</p>
                 </div>
               </button>
             ))}
@@ -970,11 +972,11 @@ function WelcomeIntro({ onDone }) {
   const s = slides[step];
 
   return (
-    <div className="min-h-screen bg-[#1B0F23] text-[#F5EDE4] font-sans flex flex-col">
+    <div className="min-h-screen bg-[var(--cc-bg)] text-[var(--cc-text)] font-sans flex flex-col">
       <style>{fontStyles}</style>
       <div className="max-w-md mx-auto w-full flex-1 flex flex-col px-6">
         <div className="flex justify-end pt-6">
-          <button onClick={onDone} className="text-xs text-[#6B5B73]">
+          <button onClick={onDone} className="text-xs text-[var(--cc-dim)]">
             Skip
           </button>
         </div>
@@ -982,7 +984,7 @@ function WelcomeIntro({ onDone }) {
         <div className="flex-1 flex flex-col items-center justify-center text-center gap-5 -mt-10">
           <div className="text-6xl">{s.icon}</div>
           <h1 className="font-display text-3xl leading-tight max-w-xs">{s.title}</h1>
-          <p className="text-[#B8A9C0] text-sm max-w-xs">{s.subtitle}</p>
+          <p className="text-[var(--cc-muted)] text-sm max-w-xs">{s.subtitle}</p>
         </div>
 
         <div className="flex items-center justify-center gap-1.5 mb-6">
@@ -1088,11 +1090,11 @@ function AuthScreen({ onSignedUp }) {
       : "Campus Circuit";
 
   return (
-    <div className="min-h-screen bg-[#1B0F23] text-[#F5EDE4] font-sans flex flex-col">
+    <div className="min-h-screen bg-[var(--cc-bg)] text-[var(--cc-text)] font-sans flex flex-col">
       <style>{fontStyles}</style>
       <div className="max-w-md mx-auto w-full flex-1 flex flex-col px-6 pt-12 pb-10">
         <h1 className="font-display text-3xl leading-tight">{title}</h1>
-        <p className="text-[#B8A9C0] text-sm mt-2 mb-6">
+        <p className="text-[var(--cc-muted)] text-sm mt-2 mb-6">
           {mode === "forgot"
             ? "Enter the email on your account and we'll send you a reset link."
             : mode === "forgot-sent"
@@ -1116,7 +1118,7 @@ function AuthScreen({ onSignedUp }) {
             </a>
             <button
               onClick={() => setMode("login")}
-              className="w-full py-3 rounded-full border border-white/10 text-[#B8A9C0] text-sm"
+              className="w-full py-3 rounded-full border border-white/10 text-[var(--cc-muted)] text-sm"
             >
               Back to log in
             </button>
@@ -1135,7 +1137,7 @@ function AuthScreen({ onSignedUp }) {
             </a>
             <button
               onClick={() => setMode("login")}
-              className="w-full py-3 rounded-full border border-white/10 text-[#B8A9C0] text-sm"
+              className="w-full py-3 rounded-full border border-white/10 text-[var(--cc-muted)] text-sm"
             >
               Back to log in
             </button>
@@ -1145,14 +1147,14 @@ function AuthScreen({ onSignedUp }) {
         {mode !== "forgot-sent" && mode !== "signup-sent" && (
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="text-xs text-[#B8A9C0] block mb-1.5">Email</label>
+              <label className="text-xs text-[var(--cc-muted)] block mb-1.5">Email</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
               />
             </div>
 
@@ -1172,7 +1174,7 @@ function AuthScreen({ onSignedUp }) {
                   setMode("forgot");
                   setError("");
                 }}
-                className="text-xs text-[#B8A9C0] block"
+                className="text-xs text-[var(--cc-muted)] block"
               >
                 Forgot password?
               </button>
@@ -1181,83 +1183,83 @@ function AuthScreen({ onSignedUp }) {
             {mode === "signup" && (
               <>
                 <div className="pt-2 border-t border-white/5">
-                  <label className="text-xs text-[#B8A9C0] block mb-1.5 mt-3">Name *</label>
+                  <label className="text-xs text-[var(--cc-muted)] block mb-1.5 mt-3">Name *</label>
                   <input
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Priya"
-                    className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                    className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-[#B8A9C0] block mb-1.5">Date of birth *</label>
+                  <label className="text-xs text-[var(--cc-muted)] block mb-1.5">Date of birth *</label>
                   <input
                     type="date"
                     required
                     value={dob}
                     onChange={(e) => setDob(e.target.value)}
-                    className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                    className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
                   />
                   {dob && age !== null && (
-                    <p className={`text-[11px] mt-1 ${age >= 18 ? "text-[#6B5B73]" : "text-[#FF4D6D]"}`}>
+                    <p className={`text-[11px] mt-1 ${age >= 18 ? "text-[var(--cc-dim)]" : "text-[#FF4D6D]"}`}>
                       {age >= 18 ? `Age ${age}` : "You must be 18 or older to join."}
                     </p>
                   )}
                 </div>
                 <div className="flex gap-3">
                   <div className="flex-1">
-                    <label className="text-xs text-[#B8A9C0] block mb-1.5">Country *</label>
+                    <label className="text-xs text-[var(--cc-muted)] block mb-1.5">Country *</label>
                     <input
                       required
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
                       placeholder="India"
-                      className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                      className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="text-xs text-[#B8A9C0] block mb-1.5">State *</label>
+                    <label className="text-xs text-[var(--cc-muted)] block mb-1.5">State *</label>
                     <input
                       required
                       value={state}
                       onChange={(e) => setStateVal(e.target.value)}
                       placeholder="Uttar Pradesh"
-                      className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                      className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs text-[#B8A9C0] block mb-1.5">City *</label>
+                  <label className="text-xs text-[var(--cc-muted)] block mb-1.5">City *</label>
                   <input
                     required
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     placeholder="Meerut"
-                    className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                    className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-[#B8A9C0] block mb-1.5">Mobile number *</label>
+                  <label className="text-xs text-[var(--cc-muted)] block mb-1.5">Mobile number *</label>
                   <input
                     type="tel"
                     required
                     value={mobile}
                     onChange={(e) => setMobile(e.target.value)}
                     placeholder="10-digit number"
-                    className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                    className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
                   />
-                  <p className="text-[10px] text-[#6B5B73] mt-1">
+                  <p className="text-[10px] text-[var(--cc-dim)] mt-1">
                     Not verified yet in this test build — kept private either way.
                   </p>
                 </div>
                 <div>
-                  <label className="text-xs text-[#B8A9C0] block mb-1.5">College (optional)</label>
+                  <label className="text-xs text-[var(--cc-muted)] block mb-1.5">College (optional)</label>
                   <input
                     value={college}
                     onChange={(e) => setCollege(e.target.value)}
                     placeholder="e.g. DU, IIT Delhi"
-                    className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+                    className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
                   />
                 </div>
               </>
@@ -1282,13 +1284,13 @@ function AuthScreen({ onSignedUp }) {
         {(mode === "signup" || mode === "login") && (
           <button
             onClick={() => setMode(mode === "signup" ? "login" : "signup")}
-            className="text-xs text-[#B8A9C0] mt-5 text-center"
+            className="text-xs text-[var(--cc-muted)] mt-5 text-center"
           >
             {mode === "signup" ? "Already have an account? Log in" : "New here? Create an account"}
           </button>
         )}
         {mode === "forgot" && (
-          <button onClick={() => setMode("login")} className="text-xs text-[#B8A9C0] mt-5 text-center">
+          <button onClick={() => setMode("login")} className="text-xs text-[var(--cc-muted)] mt-5 text-center">
             Back to log in
           </button>
         )}
@@ -1319,7 +1321,7 @@ function ResetPasswordScreen({ onDone }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#1B0F23] text-[#F5EDE4] font-sans flex flex-col">
+    <div className="min-h-screen bg-[var(--cc-bg)] text-[var(--cc-text)] font-sans flex flex-col">
       <style>{fontStyles}</style>
       <div className="max-w-md mx-auto w-full flex-1 flex flex-col px-6 pt-16">
         <h1 className="font-display text-3xl leading-tight">Set a new password</h1>
@@ -1481,7 +1483,7 @@ function CreateProfile({ userId, initialData, onDone }) {
   const totalSteps = 5;
 
   return (
-    <div className="min-h-screen bg-[#1B0F23] text-[#F5EDE4] font-sans flex flex-col">
+    <div className="min-h-screen bg-[var(--cc-bg)] text-[var(--cc-text)] font-sans flex flex-col">
       <style>{fontStyles}</style>
       <div className="max-w-md mx-auto w-full flex-1 flex flex-col px-6 pt-8">
         <div className="flex gap-1.5 mb-6">
@@ -1494,17 +1496,17 @@ function CreateProfile({ userId, initialData, onDone }) {
           <div className="space-y-4">
             <h1 className="font-display text-2xl mb-1">Almost there</h1>
             <div>
-              <label className="text-xs text-[#B8A9C0] block mb-1.5">Username *</label>
+              <label className="text-xs text-[var(--cc-muted)] block mb-1.5">Username *</label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B5B73] text-sm">@</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--cc-dim)] text-sm">@</span>
                 <input
                   value={username}
                   onChange={(e) => handleUsernameChange(e.target.value)}
                   placeholder="yourname"
-                  className="w-full bg-[#2A1830] border border-white/10 rounded-xl pl-8 pr-4 py-3 outline-none focus:border-[#FF4D6D]"
+                  className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl pl-8 pr-4 py-3 outline-none focus:border-[#FF4D6D]"
                 />
               </div>
-              {usernameStatus === "checking" && <p className="text-[11px] text-[#6B5B73] mt-1">checking...</p>}
+              {usernameStatus === "checking" && <p className="text-[11px] text-[var(--cc-dim)] mt-1">checking...</p>}
               {usernameStatus === "available" && (
                 <p className="text-[11px] text-[#4DD4C0] mt-1">@{username} is available</p>
               )}
@@ -1516,20 +1518,20 @@ function CreateProfile({ userId, initialData, onDone }) {
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs text-[#B8A9C0]">Bio *</label>
-                <span className="text-[11px] text-[#6B5B73]">{wordCount(bio)}/101 words</span>
+                <label className="text-xs text-[var(--cc-muted)]">Bio *</label>
+                <span className="text-[11px] text-[var(--cc-dim)]">{wordCount(bio)}/101 words</span>
               </div>
               <textarea
                 value={bio}
                 onChange={(e) => handleBioChange(e.target.value)}
                 placeholder="Tell people a bit about you..."
                 rows={4}
-                className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D] resize-none"
+                className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D] resize-none"
               />
             </div>
 
             <div>
-              <label className="text-xs text-[#B8A9C0] block mb-1.5">Gender *</label>
+              <label className="text-xs text-[var(--cc-muted)] block mb-1.5">Gender *</label>
               <div className="flex gap-2">
                 {["Woman", "Man", "Other"].map((g) => (
                   <button
@@ -1537,7 +1539,7 @@ function CreateProfile({ userId, initialData, onDone }) {
                     type="button"
                     onClick={() => setGender(g)}
                     className={`px-4 py-2 rounded-full text-sm border ${
-                      gender === g ? "bg-[#FF4D6D] border-[#FF4D6D] text-white" : "border-white/10 text-[#B8A9C0]"
+                      gender === g ? "bg-[#FF4D6D] border-[#FF4D6D] text-white" : "border-white/10 text-[var(--cc-muted)]"
                     }`}
                   >
                     {g}
@@ -1551,10 +1553,10 @@ function CreateProfile({ userId, initialData, onDone }) {
         {step === 1 && (
           <div>
             <h1 className="font-display text-2xl mb-1">Profile photo</h1>
-            <p className="text-sm text-[#B8A9C0] mb-4">Required. Real photos build trust. You can add more later.</p>
+            <p className="text-sm text-[var(--cc-muted)] mb-4">Required. Real photos build trust. You can add more later.</p>
             <div className="grid grid-cols-3 gap-2.5">
               {photos.map((url) => (
-                <div key={url} className="relative aspect-square rounded-xl overflow-hidden bg-[#2A1830]">
+                <div key={url} className="relative aspect-square rounded-xl overflow-hidden bg-[var(--cc-surface)]">
                   <img src={url} alt="" className="w-full h-full object-cover" />
                   <button
                     onClick={() => removePhoto(url)}
@@ -1568,7 +1570,7 @@ function CreateProfile({ userId, initialData, onDone }) {
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
-                  className="aspect-square rounded-xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-1 text-[#6B5B73]"
+                  className="aspect-square rounded-xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-1 text-[var(--cc-dim)]"
                 >
                   {uploading ? (
                     <span className="text-xs">uploading...</span>
@@ -1595,7 +1597,7 @@ function CreateProfile({ userId, initialData, onDone }) {
         {step === 2 && (
           <div>
             <h1 className="font-display text-2xl mb-1">What are you into?</h1>
-            <p className="text-sm text-[#B8A9C0] mb-4">Pick as many as apply — this is how we match you.</p>
+            <p className="text-sm text-[var(--cc-muted)] mb-4">Pick as many as apply — this is how we match you.</p>
             <div className="grid grid-cols-1 gap-2.5">
               {INTENTS.map((intent) => {
                 const active = intents.includes(intent.id);
@@ -1608,10 +1610,10 @@ function CreateProfile({ userId, initialData, onDone }) {
                     style={
                       active
                         ? { backgroundColor: intent.color + "22", borderColor: intent.color }
-                        : { borderColor: "rgba(255,255,255,0.1)", backgroundColor: "#2A1830" }
+                        : { borderColor: "rgba(255,255,255,0.1)", backgroundColor: "var(--cc-surface)" }
                     }
                   >
-                    <span className="text-sm" style={{ color: active ? intent.color : "#F5EDE4" }}>
+                    <span className="text-sm" style={{ color: active ? intent.color : "var(--cc-text)" }}>
                       {intent.label}
                     </span>
                   </button>
@@ -1623,7 +1625,7 @@ function CreateProfile({ userId, initialData, onDone }) {
                 value={intentOther}
                 onChange={(e) => setIntentOther(e.target.value)}
                 placeholder="Tell us what you're looking for..."
-                className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 mt-3 outline-none focus:border-[#FF4D6D]"
+                className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 mt-3 outline-none focus:border-[#FF4D6D]"
               />
             )}
           </div>
@@ -1632,12 +1634,12 @@ function CreateProfile({ userId, initialData, onDone }) {
         {step === 3 && (
           <div>
             <h1 className="font-display text-2xl mb-1">Show some personality</h1>
-            <p className="text-sm text-[#B8A9C0] mb-4">
+            <p className="text-sm text-[var(--cc-muted)] mb-4">
               Optional, but profiles with prompts get way more matches.
             </p>
             <div className="space-y-3">
               {selectedPrompts.map((p, i) => (
-                <div key={i} className="bg-[#2A1830] rounded-xl p-4 border border-white/5">
+                <div key={i} className="bg-[var(--cc-surface)] rounded-xl p-4 border border-white/5">
                   <div className="flex items-center justify-between mb-2">
                     <select
                       value={p.q}
@@ -1645,12 +1647,12 @@ function CreateProfile({ userId, initialData, onDone }) {
                       className="bg-transparent text-[#FFB84D] text-sm font-medium outline-none"
                     >
                       {PROMPT_OPTIONS.map((opt) => (
-                        <option key={opt} value={opt} className="bg-[#2A1830]">
+                        <option key={opt} value={opt} className="bg-[var(--cc-surface)]">
                           {opt}
                         </option>
                       ))}
                     </select>
-                    <button onClick={() => removePrompt(i)} className="text-[#6B5B73]">
+                    <button onClick={() => removePrompt(i)} className="text-[var(--cc-dim)]">
                       <X size={16} />
                     </button>
                   </div>
@@ -1659,14 +1661,14 @@ function CreateProfile({ userId, initialData, onDone }) {
                     onChange={(e) => updatePromptAnswer(i, e.target.value)}
                     placeholder="Type your answer..."
                     rows={2}
-                    className="w-full bg-transparent text-sm outline-none resize-none placeholder-[#6B5B73]"
+                    className="w-full bg-transparent text-sm outline-none resize-none placeholder-[var(--cc-dim)]"
                   />
                 </div>
               ))}
               {selectedPrompts.length < 3 && (
                 <button
                   onClick={addPromptSlot}
-                  className="w-full py-3 rounded-xl border border-dashed border-white/20 text-[#B8A9C0] text-sm flex items-center justify-center gap-2"
+                  className="w-full py-3 rounded-xl border border-dashed border-white/20 text-[var(--cc-muted)] text-sm flex items-center justify-center gap-2"
                 >
                   <Plus size={16} /> Add a prompt
                 </button>
@@ -1678,8 +1680,8 @@ function CreateProfile({ userId, initialData, onDone }) {
         {step === 4 && (
           <div>
             <h1 className="font-display text-2xl mb-1">Review your profile</h1>
-            <p className="text-sm text-[#B8A9C0] mb-4">This is what others will see.</p>
-            <div className="bg-[#2A1830] rounded-2xl overflow-hidden border border-white/5">
+            <p className="text-sm text-[var(--cc-muted)] mb-4">This is what others will see.</p>
+            <div className="bg-[var(--cc-surface)] rounded-2xl overflow-hidden border border-white/5">
               <div className="aspect-[4/3]">
                 <Avatar profile={{ name: data.name, photos }} />
               </div>
@@ -1687,11 +1689,11 @@ function CreateProfile({ userId, initialData, onDone }) {
                 <h2 className="font-display text-xl">
                   {data.name}, {data.age}
                 </h2>
-                <p className="text-xs text-[#B8A9C0]">
+                <p className="text-xs text-[var(--cc-muted)]">
                   @{username} · {data.city}, {data.state}
                 </p>
-                {data.college && <p className="text-xs text-[#6B5B73] mt-0.5">{data.college}</p>}
-                {bio && <p className="text-sm mt-3 text-[#F5EDE4]/90">{bio}</p>}
+                {data.college && <p className="text-xs text-[var(--cc-dim)] mt-0.5">{data.college}</p>}
+                {bio && <p className="text-sm mt-3 text-[var(--cc-text)]/90">{bio}</p>}
                 <div className="flex flex-wrap gap-1.5 mt-3">
                   {intents.map((id) => {
                     const meta = intentMeta(id);
@@ -1710,7 +1712,7 @@ function CreateProfile({ userId, initialData, onDone }) {
                   .filter((p) => p.a.trim())
                   .map((p, i) => (
                     <div key={i} className="mt-3">
-                      <p className="text-[11px] text-[#6B5B73]">{p.q}</p>
+                      <p className="text-[11px] text-[var(--cc-dim)]">{p.q}</p>
                       <p className="text-sm mt-0.5">{p.a}</p>
                     </div>
                   ))}
@@ -1725,7 +1727,7 @@ function CreateProfile({ userId, initialData, onDone }) {
           {step > 0 && (
             <button
               onClick={() => setStep((s) => s - 1)}
-              className="px-5 py-3 rounded-full border border-white/10 text-[#B8A9C0] text-sm"
+              className="px-5 py-3 rounded-full border border-white/10 text-[var(--cc-muted)] text-sm"
             >
               Back
             </button>
@@ -1755,6 +1757,9 @@ function StoriesBar({ profile }) {
   }, []);
 
   async function load() {
+    const { data: hunters } = await supabase.from("crushes").select("sender_id").eq("target_id", profile.id);
+    const hunterIds = new Set((hunters || []).map((h) => h.sender_id));
+
     const { data: stories } = await supabase
       .from("stories")
       .select("*, profiles(name, username, photos)")
@@ -1773,8 +1778,9 @@ function StoriesBar({ profile }) {
     const mine = byUser[profile.id]?.stories || [];
     setMyStories(mine);
 
+    // Only show stories from people who have hunted you.
     const others = Object.values(byUser)
-      .filter((g) => g.userId !== profile.id)
+      .filter((g) => g.userId !== profile.id && hunterIds.has(g.userId))
       .map((g) => ({ ...g, allViewed: g.stories.every((s) => viewedIds.has(s.id)) }));
     setGroups(others);
   }
@@ -1828,17 +1834,17 @@ function StoriesBar({ profile }) {
                 myStories.length > 0 ? "bg-gradient-to-br from-[#FF4D6D] to-[#FFB84D]" : "bg-white/10"
               }`}
             >
-              <div className="w-full h-full rounded-full overflow-hidden border-2 border-[#1B0F23]">
+              <div className="w-full h-full rounded-full overflow-hidden border-2 border-[var(--cc-bg)]">
                 <Avatar profile={profile} textSize="text-lg" />
               </div>
             </div>
             {myStories.length === 0 && (
-              <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#FF4D6D] flex items-center justify-center border-2 border-[#1B0F23]">
+              <div className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-[#FF4D6D] flex items-center justify-center border-2 border-[var(--cc-bg)]">
                 <Plus size={11} className="text-white" />
               </div>
             )}
           </div>
-          <span className="text-[10px] text-[#B8A9C0]">Your story</span>
+          <span className="text-[10px] text-[var(--cc-muted)]">Your story</span>
         </button>
 
         {groups.map((g, i) => (
@@ -1852,11 +1858,11 @@ function StoriesBar({ profile }) {
                 g.allViewed ? "bg-white/10" : "bg-gradient-to-br from-[#FF4D6D] to-[#FFB84D]"
               }`}
             >
-              <div className="w-full h-full rounded-full overflow-hidden border-2 border-[#1B0F23]">
+              <div className="w-full h-full rounded-full overflow-hidden border-2 border-[var(--cc-bg)]">
                 <Avatar profile={g.profile} textSize="text-lg" />
               </div>
             </div>
-            <span className="text-[10px] text-[#B8A9C0] max-w-[56px] truncate">{g.profile?.name}</span>
+            <span className="text-[10px] text-[var(--cc-muted)] max-w-[56px] truncate">{g.profile?.name}</span>
           </button>
         ))}
       </div>
@@ -1868,9 +1874,12 @@ function StoryViewer({ data, myId, onClose }) {
   const [groupIndex, setGroupIndex] = useState(data.startIndex);
   const [storyIndex, setStoryIndex] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [sentEmoji, setSentEmoji] = useState(null);
+  const [paused, setPaused] = useState(false);
   const timerRef = useRef(null);
   const startRef = useRef(null);
   const videoRef = useRef(null);
+  const STICKERS = ["❤️", "🔥", "😂", "😮", "👏", "😢"];
 
   const group = data.groups[groupIndex];
   const story = group?.stories[storyIndex];
@@ -1884,6 +1893,7 @@ function StoryViewer({ data, myId, onClose }) {
     if (story.media_type === "image") {
       startRef.current = Date.now();
       timerRef.current = setInterval(() => {
+        if (paused) return;
         const pct = Math.min(100, ((Date.now() - startRef.current) / DURATION) * 100);
         setProgress(pct);
         if (pct >= 100) next();
@@ -1924,6 +1934,37 @@ function StoryViewer({ data, myId, onClose }) {
     const v = videoRef.current;
     if (!v || !v.duration) return;
     setProgress((v.currentTime / v.duration) * 100);
+  }
+
+  // Sending a story reaction/reply always goes through, even if the other
+  // person hasn't replied to your last message yet (that rule only applies
+  // to regular chat, not story replies).
+  async function sendStoryReply(text) {
+    if (group.userId === myId) return;
+    setPaused(true);
+    const [user1_id, user2_id] = [myId, group.userId].sort();
+    let { data: match } = await supabase
+      .from("matches")
+      .select("id")
+      .eq("user1_id", user1_id)
+      .eq("user2_id", user2_id)
+      .maybeSingle();
+    if (!match) {
+      const { data: created } = await supabase
+        .from("matches")
+        .insert({ user1_id, user2_id })
+        .select("id")
+        .maybeSingle();
+      match = created;
+    }
+    if (match) {
+      await supabase.from("messages").insert({ match_id: match.id, sender_id: myId, content: text });
+    }
+    setSentEmoji(text);
+    setTimeout(() => {
+      setSentEmoji(null);
+      setPaused(false);
+    }, 900);
   }
 
   if (!story) return null;
@@ -1973,7 +2014,29 @@ function StoryViewer({ data, myId, onClose }) {
           ) : (
             <img src={story.media_url} alt="" className="w-full h-full object-contain" />
           )}
+
+          {sentEmoji && (
+            <div className="absolute inset-x-0 bottom-20 flex justify-center pointer-events-none">
+              <div className="bg-white/15 backdrop-blur px-4 py-2 rounded-full text-white text-sm">
+                {sentEmoji} sent
+              </div>
+            </div>
+          )}
         </div>
+
+        {group.userId !== myId && (
+          <div className="flex items-center justify-center gap-3 px-4 py-3">
+            {STICKERS.map((s) => (
+              <button
+                key={s}
+                onClick={() => sendStoryReply(s)}
+                className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-lg active:scale-90 transition-transform"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1987,7 +2050,6 @@ function FeedTab({ profile, onOpenProfile }) {
   const [reportTarget, setReportTarget] = useState(null);
   const [myLikes, setMyLikes] = useState({});
   const [mySaves, setMySaves] = useState({});
-  const [myReposts, setMyReposts] = useState({});
   const [openPost, setOpenPost] = useState(null);
   const [postMenuFor, setPostMenuFor] = useState(null);
   const seenIds = useRef(new Set());
@@ -2021,11 +2083,29 @@ function FeedTab({ profile, onOpenProfile }) {
     observerRef.current.observe(node);
   }
 
+  // Relevance score: same interests > close in age (within ~2yrs) > same college > same state/city > everything else.
+  function relevanceScore(authorProfile) {
+    if (!authorProfile) return 0;
+    let score = 0;
+    const sharedIntents = (authorProfile.intents || []).filter((i) => (profile.intents || []).includes(i)).length;
+    if (sharedIntents > 0) score += 10000 + sharedIntents * 10;
+    if (authorProfile.age != null && profile.age != null) {
+      const diff = Math.abs(authorProfile.age - profile.age);
+      if (diff <= 2) score += 1000 - diff * 100;
+    }
+    if (authorProfile.college && profile.college && authorProfile.college === profile.college) score += 100;
+    if (authorProfile.state && profile.state && authorProfile.state === profile.state) score += 20;
+    if (authorProfile.city && profile.city && authorProfile.city === profile.city) score += 10;
+    return score;
+  }
+
   async function load() {
     setLoading(true);
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
     const { data } = await supabase
       .from("posts")
-      .select("*, profiles(name, username, photos)")
+      .select("*, profiles(name, username, photos, intents, age, college, state, city)")
+      .gte("created_at", twoDaysAgo)
       .order("created_at", { ascending: false });
 
     const { data: myViews } = await supabase.from("post_views").select("post_id").eq("viewer_id", profile.id);
@@ -2044,33 +2124,24 @@ function FeedTab({ profile, onOpenProfile }) {
       commentCounts[c.post_id] = (commentCounts[c.post_id] || 0) + 1;
     });
 
-    const { data: allReposts } = await supabase.from("reposts").select("original_post_id, user_id");
-    const repostCounts = {};
-    (allReposts || []).forEach((r) => {
-      repostCounts[r.original_post_id] = (repostCounts[r.original_post_id] || 0) + 1;
-    });
-
     const withCounts = (data || []).map((p) => ({
       ...p,
       like_count: likeCounts[p.id] || 0,
       comment_count: commentCounts[p.id] || 0,
-      repost_count: repostCounts[p.id] || 0,
       _seen: seenSet.has(p.id),
+      _score: relevanceScore(p.profiles),
     }));
 
-    // Unseen posts first (newest first), already-seen posts after (newest first) —
-    // so the feed doesn't keep resurfacing the same posts once you've viewed them.
-    const unseen = withCounts.filter((p) => !p._seen);
-    const seen = withCounts.filter((p) => p._seen);
+    // Unseen posts first, ranked by relevance (interests > age > college > state/city > rest);
+    // already-seen posts follow the same ranking, after unseen ones.
+    const byRelevance = (a, b) => b._score - a._score;
+    const unseen = withCounts.filter((p) => !p._seen).sort(byRelevance);
+    const seen = withCounts.filter((p) => p._seen).sort(byRelevance);
     setPosts([...unseen, ...seen]);
 
     const likeMap = {};
     (allLikes || []).filter((l) => l.user_id === profile.id).forEach((l) => (likeMap[l.post_id] = true));
     setMyLikes(likeMap);
-
-    const repostMap = {};
-    (allReposts || []).filter((r) => r.user_id === profile.id).forEach((r) => (repostMap[r.original_post_id] = true));
-    setMyReposts(repostMap);
 
     const { data: saves } = await supabase.from("saved_posts").select("post_id").eq("user_id", profile.id);
     const saveMap = {};
@@ -2100,19 +2171,6 @@ function FeedTab({ profile, onOpenProfile }) {
       await supabase.from("saved_posts").delete().eq("post_id", post.id).eq("user_id", profile.id);
     } else {
       await supabase.from("saved_posts").insert({ post_id: post.id, user_id: profile.id });
-    }
-  }
-
-  async function toggleRepost(post) {
-    const reposted = myReposts[post.id];
-    setMyReposts((prev) => ({ ...prev, [post.id]: !reposted }));
-    setPosts((prev) =>
-      prev.map((p) => (p.id === post.id ? { ...p, repost_count: (p.repost_count || 0) + (reposted ? -1 : 1) } : p))
-    );
-    if (reposted) {
-      await supabase.from("reposts").delete().eq("original_post_id", post.id).eq("user_id", profile.id);
-    } else {
-      await supabase.from("reposts").insert({ original_post_id: post.id, user_id: profile.id });
     }
   }
 
@@ -2166,7 +2224,7 @@ function FeedTab({ profile, onOpenProfile }) {
       )}
 
       <div className="flex items-center justify-between mb-4">
-        <h1 className="font-display text-2xl">Feed</h1>
+        <h1 className="font-display text-2xl">Explore</h1>
         <button
           onClick={() => setShowCreate(true)}
           className="w-9 h-9 rounded-full bg-[#FF4D6D] flex items-center justify-center text-white"
@@ -2177,12 +2235,12 @@ function FeedTab({ profile, onOpenProfile }) {
 
       <StoriesBar profile={profile} />
 
-      {loading && <p className="text-center text-[#B8A9C0] text-sm py-8">loading feed...</p>}
+      {loading && <p className="text-center text-[var(--cc-muted)] text-sm py-8">loading...</p>}
 
       {!loading && posts.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
-          <Grid3x3 size={32} className="text-[#6B5B73]" />
-          <p className="text-[#B8A9C0] text-sm">No posts yet. Be the first to share something.</p>
+          <Grid3x3 size={32} className="text-[var(--cc-dim)]" />
+          <p className="text-[var(--cc-muted)] text-sm">No posts from the last 2 days yet.</p>
         </div>
       )}
 
@@ -2191,7 +2249,7 @@ function FeedTab({ profile, onOpenProfile }) {
           <div
             key={post.id}
             ref={(node) => observePost(node, post.id)}
-            className="bg-[#2A1830] rounded-2xl overflow-hidden border border-white/5"
+            className="bg-[var(--cc-surface)] rounded-2xl overflow-hidden border border-white/5"
           >
             <div className="flex items-center gap-2.5 p-3">
               <button onClick={() => onOpenProfile(post.user_id)} className="w-8 h-8 rounded-full overflow-hidden shrink-0">
@@ -2199,14 +2257,14 @@ function FeedTab({ profile, onOpenProfile }) {
               </button>
               <button onClick={() => onOpenProfile(post.user_id)} className="flex-1 min-w-0 text-left">
                 <p className="text-sm font-medium truncate">{post.profiles?.name}</p>
-                <p className="text-[11px] text-[#6B5B73]">@{post.profiles?.username}</p>
+                <p className="text-[11px] text-[var(--cc-dim)]">@{post.profiles?.username}</p>
               </button>
               {post.user_id === profile.id ? (
-                <button onClick={() => setPostMenuFor(postMenuFor === post.id ? null : post.id)} className="text-[#6B5B73] p-1">
+                <button onClick={() => setPostMenuFor(postMenuFor === post.id ? null : post.id)} className="text-[var(--cc-dim)] p-1">
                   <MoreHorizontal size={17} />
                 </button>
               ) : (
-                <button onClick={() => setReportTarget(post.id)} className="text-[#6B5B73] p-1">
+                <button onClick={() => setReportTarget(post.id)} className="text-[var(--cc-dim)] p-1">
                   <Flag size={15} />
                 </button>
               )}
@@ -2236,24 +2294,20 @@ function FeedTab({ profile, onOpenProfile }) {
                 <button onClick={() => toggleLike(post)} className="flex items-center gap-1.5">
                   <Heart
                     size={19}
-                    className={myLikes[post.id] ? "text-[#FF4D6D]" : "text-[#B8A9C0]"}
+                    className={myLikes[post.id] ? "text-[#FF4D6D]" : "text-[var(--cc-muted)]"}
                     fill={myLikes[post.id] ? "#FF4D6D" : "none"}
                   />
-                  <span className="text-xs text-[#B8A9C0]">{post.like_count || 0}</span>
+                  <span className="text-xs text-[var(--cc-muted)]">{post.like_count || 0}</span>
                 </button>
                 <button onClick={() => setOpenPost(post)} className="flex items-center gap-1.5">
-                  <MessageCircle size={18} className="text-[#B8A9C0]" />
-                  <span className="text-xs text-[#B8A9C0]">{post.comment_count || 0}</span>
+                  <MessageCircle size={18} className="text-[var(--cc-muted)]" />
+                  <span className="text-xs text-[var(--cc-muted)]">{post.comment_count || 0}</span>
                 </button>
-                <button onClick={() => toggleRepost(post)} className="flex items-center gap-1.5">
-                  <Repeat2 size={19} className={myReposts[post.id] ? "text-[#4DD4C0]" : "text-[#B8A9C0]"} />
-                  <span className="text-xs text-[#B8A9C0]">{post.repost_count || 0}</span>
-                </button>
-                <button onClick={() => sharePost(post)} className="text-[#B8A9C0]">
+                <button onClick={() => sharePost(post)} className="text-[var(--cc-muted)]">
                   <Share2 size={17} />
                 </button>
-                <button onClick={() => toggleSave(post)} className="ml-auto text-[#B8A9C0]">
-                  <Bookmark size={17} fill={mySaves[post.id] ? "#F5EDE4" : "none"} />
+                <button onClick={() => toggleSave(post)} className="ml-auto text-[var(--cc-muted)]">
+                  <Bookmark size={17} fill={mySaves[post.id] ? "var(--cc-text)" : "none"} />
                 </button>
               </div>
               {post.caption && (
@@ -2338,10 +2392,10 @@ function CreatePost({ userId, onClose, onPosted }) {
 
   return (
     <div className="fixed inset-0 bg-black/80 z-30 flex items-end sm:items-center justify-center px-4">
-      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-md p-5 max-h-[85vh] overflow-y-auto">
+      <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-md p-5 max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-xl">New post</h2>
-          <button onClick={onClose} className="text-[#B8A9C0]">
+          <button onClick={onClose} className="text-[var(--cc-muted)]">
             <X size={20} />
           </button>
         </div>
@@ -2349,14 +2403,14 @@ function CreatePost({ userId, onClose, onPosted }) {
         {!preview && (
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="w-full aspect-square rounded-xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-2 text-[#6B5B73]"
+            className="w-full aspect-square rounded-xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-2 text-[var(--cc-dim)]"
           >
             <div className="flex gap-3">
               <Camera size={22} />
               <Video size={22} />
             </div>
             <span className="text-xs">Tap to choose a photo or video</span>
-            <span className="text-[10px] text-[#6B5B73]">Max {MAX_MB}MB</span>
+            <span className="text-[10px] text-[var(--cc-dim)]">Max {MAX_MB}MB</span>
           </button>
         )}
 
@@ -2386,12 +2440,12 @@ function CreatePost({ userId, onClose, onPosted }) {
           onChange={(e) => setCaption(e.target.value)}
           placeholder="Write a caption... use #hashtags too"
           rows={2}
-          className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 mt-4 outline-none focus:border-[#FF4D6D] resize-none text-sm"
+          className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 mt-4 outline-none focus:border-[#FF4D6D] resize-none text-sm"
         />
 
         <button
           onClick={() => setShowTagPicker(true)}
-          className="w-full flex items-center gap-2 text-sm text-[#B8A9C0] mt-2.5 py-1"
+          className="w-full flex items-center gap-2 text-sm text-[var(--cc-muted)] mt-2.5 py-1"
         >
           <UserPlus size={15} />
           {taggedUsers.length > 0 ? `Tagged: ${taggedUsers.map((u) => "@" + u.username).join(", ")}` : "Tag people"}
@@ -2406,14 +2460,14 @@ function CreatePost({ userId, onClose, onPosted }) {
         )}
 
         <div className="mt-4">
-          <p className="text-xs text-[#B8A9C0] mb-2">Who can see this?</p>
+          <p className="text-xs text-[var(--cc-muted)] mb-2">Who can see this?</p>
           <div className="flex gap-2">
             <button
               onClick={() => setVisibility("public")}
               className={`flex-1 py-2.5 rounded-xl border text-sm ${
                 visibility === "public"
                   ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]"
-                  : "border-white/10 text-[#B8A9C0]"
+                  : "border-white/10 text-[var(--cc-muted)]"
               }`}
             >
               Everyone
@@ -2423,7 +2477,7 @@ function CreatePost({ userId, onClose, onPosted }) {
               className={`flex-1 py-2.5 rounded-xl border text-sm ${
                 visibility === "matches_only"
                   ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]"
-                  : "border-white/10 text-[#B8A9C0]"
+                  : "border-white/10 text-[var(--cc-muted)]"
               }`}
             >
               Only my matches
@@ -2478,10 +2532,10 @@ function TagPeoplePicker({ selected, onChange, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/80 z-40 flex items-end sm:items-center justify-center px-4">
-      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-md p-5 max-h-[75vh] flex flex-col">
+      <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-md p-5 max-h-[75vh] flex flex-col">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-display text-lg">Tag people</h3>
-          <button onClick={onClose} className="text-[#B8A9C0]">
+          <button onClick={onClose} className="text-[var(--cc-muted)]">
             <X size={20} />
           </button>
         </div>
@@ -2490,7 +2544,7 @@ function TagPeoplePicker({ selected, onChange, onClose }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search by name or @username"
-          className="w-full bg-[#2A1830] border border-white/10 rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D] mb-3"
+          className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D] mb-3"
         />
         <div className="overflow-y-auto flex-1 space-y-2">
           {results.map((p) => {
@@ -2500,7 +2554,7 @@ function TagPeoplePicker({ selected, onChange, onClose }) {
                 key={p.id}
                 onClick={() => toggle(p)}
                 className={`w-full flex items-center gap-3 rounded-xl p-2.5 border text-left ${
-                  isSelected ? "bg-[#FF4D6D]/15 border-[#FF4D6D]" : "bg-[#2A1830] border-white/5"
+                  isSelected ? "bg-[#FF4D6D]/15 border-[#FF4D6D]" : "bg-[var(--cc-surface)] border-white/5"
                 }`}
               >
                 <div className="w-9 h-9 rounded-full overflow-hidden shrink-0">
@@ -2508,7 +2562,7 @@ function TagPeoplePicker({ selected, onChange, onClose }) {
                 </div>
                 <div className="flex-1">
                   <p className="text-sm">{p.name}</p>
-                  <p className="text-xs text-[#6B5B73]">@{p.username}</p>
+                  <p className="text-xs text-[var(--cc-dim)]">@{p.username}</p>
                 </div>
                 {isSelected && <Check size={16} className="text-[#FF4D6D]" />}
               </button>
@@ -2656,29 +2710,29 @@ function PostDetail({ post, myId, onClose, onOpenProfile }) {
           <Avatar profile={comment.profiles} textSize="text-xs" />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="bg-[#2A1830] rounded-xl px-3 py-2">
+          <div className="bg-[var(--cc-surface)] rounded-xl px-3 py-2">
             <div className="flex items-center gap-1.5">
               <button onClick={() => onOpenProfile(comment.user_id)} className="text-xs font-medium">
                 {comment.profiles?.name}
               </button>
               {comment.pinned && <Pin size={10} className="text-[#FFB84D]" />}
-              {comment.hidden && <span className="text-[9px] text-[#6B5B73]">(hidden)</span>}
+              {comment.hidden && <span className="text-[9px] text-[var(--cc-dim)]">(hidden)</span>}
             </div>
             <p className="text-sm mt-0.5 break-words">{comment.content}</p>
           </div>
           <div className="flex items-center gap-3 mt-1 px-1">
-            <span className="text-[10px] text-[#6B5B73]">{timeAgo(comment.created_at)}</span>
+            <span className="text-[10px] text-[var(--cc-dim)]">{timeAgo(comment.created_at)}</span>
             <button onClick={() => toggleCommentLike(comment)} className="flex items-center gap-1">
-              <Heart size={11} className={isLiked ? "text-[#FF4D6D]" : "text-[#6B5B73]"} fill={isLiked ? "#FF4D6D" : "none"} />
-              {count > 0 && <span className="text-[10px] text-[#6B5B73]">{count}</span>}
+              <Heart size={11} className={isLiked ? "text-[#FF4D6D]" : "text-[var(--cc-dim)]"} fill={isLiked ? "#FF4D6D" : "none"} />
+              {count > 0 && <span className="text-[10px] text-[var(--cc-dim)]">{count}</span>}
             </button>
             <button
               onClick={() => setReplyTo({ id: comment.id, username: comment.profiles?.username })}
-              className="text-[10px] text-[#6B5B73]"
+              className="text-[10px] text-[var(--cc-dim)]"
             >
               Reply
             </button>
-            <button onClick={() => setMenuFor(menuFor === comment.id ? null : comment.id)} className="text-[10px] text-[#6B5B73]">
+            <button onClick={() => setMenuFor(menuFor === comment.id ? null : comment.id)} className="text-[10px] text-[var(--cc-dim)]">
               •••
             </button>
           </div>
@@ -2690,16 +2744,16 @@ function PostDetail({ post, myId, onClose, onOpenProfile }) {
                 </button>
               )}
               {isPostOwner && (
-                <button onClick={() => toggleHide(comment)} className="text-[10px] text-[#B8A9C0]">
+                <button onClick={() => toggleHide(comment)} className="text-[10px] text-[var(--cc-muted)]">
                   {comment.hidden ? "Unhide" : "Hide"}
                 </button>
               )}
               {isPostOwner && (
-                <button onClick={() => togglePin(comment)} className="text-[10px] text-[#B8A9C0]">
+                <button onClick={() => togglePin(comment)} className="text-[10px] text-[var(--cc-muted)]">
                   {comment.pinned ? "Unpin" : "Pin"}
                 </button>
               )}
-              <button onClick={() => setReportTarget({ type: "comment", id: comment.id })} className="text-[10px] text-[#B8A9C0]">
+              <button onClick={() => setReportTarget({ type: "comment", id: comment.id })} className="text-[10px] text-[var(--cc-muted)]">
                 Report
               </button>
             </div>
@@ -2712,7 +2766,7 @@ function PostDetail({ post, myId, onClose, onOpenProfile }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-[#1B0F23] z-40 flex flex-col">
+    <div className="fixed inset-0 bg-[var(--cc-bg)] z-40 flex flex-col">
       {reportTarget && (
         <ReportModal
           reporterId={myId}
@@ -2723,7 +2777,7 @@ function PostDetail({ post, myId, onClose, onOpenProfile }) {
       )}
       <div className="max-w-md mx-auto w-full flex-1 flex flex-col overflow-hidden">
         <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
-          <button onClick={onClose} className="text-[#B8A9C0]">
+          <button onClick={onClose} className="text-[var(--cc-muted)]">
             <ArrowLeft size={20} />
           </button>
           <span className="font-display text-lg">Post</span>
@@ -2736,14 +2790,14 @@ function PostDetail({ post, myId, onClose, onOpenProfile }) {
             </button>
             <button onClick={() => onOpenProfile(post.user_id)} className="flex-1 text-left">
               <p className="text-sm font-medium">{post.profiles?.name}</p>
-              <p className="text-[11px] text-[#6B5B73]">@{post.profiles?.username}</p>
+              <p className="text-[11px] text-[var(--cc-dim)]">@{post.profiles?.username}</p>
             </button>
             {isPostOwner ? (
-              <button onClick={() => setPostMenuOpen((v) => !v)} className="text-[#6B5B73] p-1">
+              <button onClick={() => setPostMenuOpen((v) => !v)} className="text-[var(--cc-dim)] p-1">
                 <MoreHorizontal size={17} />
               </button>
             ) : (
-              <button onClick={() => setReportTarget({ type: "post", id: post.id })} className="text-[#6B5B73] p-1">
+              <button onClick={() => setReportTarget({ type: "post", id: post.id })} className="text-[var(--cc-dim)] p-1">
                 <Flag size={15} />
               </button>
             )}
@@ -2769,8 +2823,8 @@ function PostDetail({ post, myId, onClose, onOpenProfile }) {
 
           <div className="p-3 border-b border-white/5">
             <button onClick={toggleLike} className="flex items-center gap-1.5">
-              <Heart size={19} className={liked ? "text-[#FF4D6D]" : "text-[#B8A9C0]"} fill={liked ? "#FF4D6D" : "none"} />
-              <span className="text-xs text-[#B8A9C0]">{likeCount}</span>
+              <Heart size={19} className={liked ? "text-[#FF4D6D]" : "text-[var(--cc-muted)]"} fill={liked ? "#FF4D6D" : "none"} />
+              <span className="text-xs text-[var(--cc-muted)]">{likeCount}</span>
             </button>
             {post.caption && (
               <p className="text-sm mt-2">
@@ -2786,9 +2840,9 @@ function PostDetail({ post, myId, onClose, onOpenProfile }) {
           </div>
 
           <div className="px-3 pb-4">
-            {loading && <p className="text-center text-[#B8A9C0] text-sm py-6">loading comments...</p>}
+            {loading && <p className="text-center text-[var(--cc-muted)] text-sm py-6">loading comments...</p>}
             {!loading && ordered.length === 0 && (
-              <p className="text-center text-[#6B5B73] text-sm py-6">No comments yet. Say something.</p>
+              <p className="text-center text-[var(--cc-dim)] text-sm py-6">No comments yet. Say something.</p>
             )}
             {ordered.map((c) => (
               <CommentRow key={c.id} comment={c} />
@@ -2799,8 +2853,8 @@ function PostDetail({ post, myId, onClose, onOpenProfile }) {
         <div className="p-3 border-t border-white/5">
           {replyTo && (
             <div className="flex items-center justify-between px-1 pb-1.5">
-              <span className="text-[11px] text-[#6B5B73]">Replying to @{replyTo.username}</span>
-              <button onClick={() => setReplyTo(null)} className="text-[11px] text-[#6B5B73]">
+              <span className="text-[11px] text-[var(--cc-dim)]">Replying to @{replyTo.username}</span>
+              <button onClick={() => setReplyTo(null)} className="text-[11px] text-[var(--cc-dim)]">
                 Cancel
               </button>
             </div>
@@ -2811,7 +2865,7 @@ function PostDetail({ post, myId, onClose, onOpenProfile }) {
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendComment()}
               placeholder="Add a comment... use @username to tag"
-              className="flex-1 bg-[#2A1830] border border-white/10 rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D]"
+              className="flex-1 bg-[var(--cc-surface)] border border-white/10 rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D]"
             />
             <button
               onClick={sendComment}
@@ -2846,22 +2900,22 @@ function ReportModal({ reporterId, targetType, targetId, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/80 z-30 flex items-center justify-center px-6">
-      <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-xs p-5">
+      <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-xs p-5">
         {done ? (
           <p className="text-sm text-[#4DD4C0] text-center py-4">Report submitted. Thank you.</p>
         ) : (
           <>
             <h3 className="font-display text-lg mb-1">Report this {targetType}</h3>
-            <p className="text-xs text-[#B8A9C0] mb-3">Tell us what's wrong — this stays confidential.</p>
+            <p className="text-xs text-[var(--cc-muted)] mb-3">Tell us what's wrong — this stays confidential.</p>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
               placeholder="What's happening..."
-              className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#FF4D6D] resize-none"
+              className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#FF4D6D] resize-none"
             />
             <div className="flex gap-2 mt-4">
-              <button onClick={onClose} className="flex-1 py-2.5 rounded-full border border-white/10 text-[#B8A9C0] text-sm">
+              <button onClick={onClose} className="flex-1 py-2.5 rounded-full border border-white/10 text-[var(--cc-muted)] text-sm">
                 Cancel
               </button>
               <button
@@ -2923,17 +2977,17 @@ function BrowseTab({ profile }) {
   }
 
   if (loading) {
-    return <div className="p-8 text-center text-[#B8A9C0] text-sm">loading profiles...</div>;
+    return <div className="p-8 text-center text-[var(--cc-muted)] text-sm">loading profiles...</div>;
   }
 
   return (
     <div className="p-5 relative">
       {matchToast && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-20 px-6">
-          <div className="bg-[#2A1830] rounded-2xl p-6 text-center border border-[#FF4D6D]/30 max-w-xs">
+          <div className="bg-[var(--cc-surface)] rounded-2xl p-6 text-center border border-[#FF4D6D]/30 max-w-xs">
             <Sparkles size={28} className="text-[#FFB84D] mx-auto mb-2" />
             <h3 className="font-display text-2xl">It's a match!</h3>
-            <p className="text-sm text-[#B8A9C0] mt-2">
+            <p className="text-sm text-[var(--cc-muted)] mt-2">
               You and {matchToast.name} both liked each other.
             </p>
             <button
@@ -2948,8 +3002,8 @@ function BrowseTab({ profile }) {
 
       {!current && (
         <div className="h-full min-h-[400px] flex flex-col items-center justify-center px-8 text-center gap-3">
-          <Users size={32} className="text-[#6B5B73]" />
-          <p className="text-[#B8A9C0] text-sm">
+          <Users size={32} className="text-[var(--cc-dim)]" />
+          <p className="text-[var(--cc-muted)] text-sm">
             No more profiles right now. Invite more classmates to join — matching gets better with more people.
           </p>
         </div>
@@ -2957,7 +3011,7 @@ function BrowseTab({ profile }) {
 
       {current && (
         <>
-          <div className="bg-[#2A1830] rounded-2xl overflow-hidden border border-white/5">
+          <div className="bg-[var(--cc-surface)] rounded-2xl overflow-hidden border border-white/5">
             <div className="aspect-[4/3]">
               <Avatar profile={current} />
             </div>
@@ -2966,19 +3020,19 @@ function BrowseTab({ profile }) {
                 {current.name}
                 {current.age ? `, ${current.age}` : ""}
               </h2>
-              <p className="text-xs text-[#B8A9C0] mt-0.5">
+              <p className="text-xs text-[var(--cc-muted)] mt-0.5">
                 {current.city}
                 {current.college ? ` · ${current.college}` : ""}
               </p>
-              {current.bio && <p className="text-sm mt-2 text-[#F5EDE4]/80 line-clamp-2">{current.bio}</p>}
+              {current.bio && <p className="text-sm mt-2 text-[var(--cc-text)]/80 line-clamp-2">{current.bio}</p>}
               {(current.prompts || []).slice(0, 1).map((p, i) => (
                 <div key={i} className="mt-3">
-                  <p className="text-[11px] text-[#6B5B73]">{p.q}</p>
-                  <p className="text-sm mt-0.5 text-[#F5EDE4]/90">{p.a}</p>
+                  <p className="text-[11px] text-[var(--cc-dim)]">{p.q}</p>
+                  <p className="text-sm mt-0.5 text-[var(--cc-text)]/90">{p.a}</p>
                 </div>
               ))}
               <div className="mt-4">
-                <p className="text-[11px] text-[#6B5B73] mb-2">looking for</p>
+                <p className="text-[11px] text-[var(--cc-dim)] mb-2">looking for</p>
                 <div className="flex flex-wrap gap-1.5">
                   {(current.intents || []).map((id) => {
                     const meta = intentMeta(id);
@@ -3005,7 +3059,7 @@ function BrowseTab({ profile }) {
           <div className="flex items-center justify-center gap-6 mt-6">
             <button
               onClick={() => swipe(current, false)}
-              className="w-14 h-14 rounded-full border border-white/10 flex items-center justify-center text-[#B8A9C0]"
+              className="w-14 h-14 rounded-full border border-white/10 flex items-center justify-center text-[var(--cc-muted)]"
             >
               <X size={22} />
             </button>
@@ -3064,13 +3118,13 @@ function MatchesTab({ myId, onOpen }) {
     setLoading(false);
   }
 
-  if (loading) return <div className="p-8 text-center text-[#B8A9C0] text-sm">loading matches...</div>;
+  if (loading) return <div className="p-8 text-center text-[var(--cc-muted)] text-sm">loading matches...</div>;
 
   if (matches.length === 0) {
     return (
       <div className="h-full min-h-[400px] flex flex-col items-center justify-center px-8 text-center gap-3">
-        <MessageCircle size={32} className="text-[#6B5B73]" />
-        <p className="text-[#B8A9C0] text-sm">No conversations yet. Message someone from their profile to start.</p>
+        <MessageCircle size={32} className="text-[var(--cc-dim)]" />
+        <p className="text-[var(--cc-muted)] text-sm">No conversations yet. Message someone from their profile to start.</p>
       </div>
     );
   }
@@ -3081,22 +3135,22 @@ function MatchesTab({ myId, onOpen }) {
     <div className="p-5 space-y-2.5">
       <div className="flex items-center gap-2 mb-1 px-1">
         <Sparkles size={14} className="text-[#FFB84D]" />
-        <p className="text-xs text-[#B8A9C0]">
-          <span className="font-medium text-[#F5EDE4]">{officialCount}</span> Matches
+        <p className="text-xs text-[var(--cc-muted)]">
+          <span className="font-medium text-[var(--cc-text)]">{officialCount}</span> Matches
         </p>
       </div>
       {matches.map((m) => (
         <button
           key={m.id}
           onClick={() => onOpen(m)}
-          className="w-full flex items-center gap-3 bg-[#2A1830] rounded-xl p-3.5 text-left border border-white/5"
+          className="w-full flex items-center gap-3 bg-[var(--cc-surface)] rounded-xl p-3.5 text-left border border-white/5"
         >
           <div className="w-11 h-11 rounded-full overflow-hidden shrink-0">
             <Avatar profile={{ name: m.otherName, photos: m.otherPhoto ? [m.otherPhoto] : [] }} textSize="text-lg" />
           </div>
           <div className="flex-1">
             <p className="text-sm font-medium">{m.otherName}</p>
-            <p className="text-xs text-[#6B5B73]">{m.is_official ? "Matched" : "Chatting"}</p>
+            <p className="text-xs text-[var(--cc-dim)]">{m.is_official ? "Matched" : "Chatting"}</p>
           </div>
           {m.is_official && <Sparkles size={16} className="text-[#FFB84D]" />}
         </button>
@@ -3211,7 +3265,7 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
         <h1 className="font-display text-2xl">Your profile</h1>
         <button
           onClick={() => setView("settings")}
-          className="w-9 h-9 rounded-full bg-[#2A1830] flex items-center justify-center text-[#B8A9C0]"
+          className="w-9 h-9 rounded-full bg-[var(--cc-surface)] flex items-center justify-center text-[var(--cc-muted)]"
         >
           <Settings size={17} />
         </button>
@@ -3231,19 +3285,19 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
             {profile.name}
             {profile.show_details && profile.age ? `, ${profile.age}` : ""}
           </h2>
-          <p className="text-xs text-[#B8A9C0] mt-0.5">
+          <p className="text-xs text-[var(--cc-muted)] mt-0.5">
             @{profile.username}
             {profile.show_details && profile.city ? ` · ${profile.city}${profile.state ? `, ${profile.state}` : ""}` : ""}
           </p>
           {profile.show_details && profile.college && (
-            <p className="text-[11px] text-[#6B5B73] mt-0.5">{profile.college}</p>
+            <p className="text-[11px] text-[var(--cc-dim)] mt-0.5">{profile.college}</p>
           )}
         </div>
       </div>
 
       {showPhotoChoice && (
         <div className="fixed inset-0 bg-black/70 z-40 flex items-end sm:items-center justify-center px-6" onClick={() => setShowPhotoChoice(false)}>
-          <div className="bg-[#1B0F23] border border-white/10 rounded-2xl w-full max-w-xs p-4" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-xs p-4" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => {
                 setShowPhotoChoice(false);
@@ -3270,28 +3324,28 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
         <SingleUserStoryViewer userId={profile.id} myId={profile.id} profile={profile} onClose={() => setShowStoryViewer(false)} />
       )}
 
-      {profile.bio && <p className="text-sm text-[#F5EDE4]/90 mb-5">{profile.bio}</p>}
+      {profile.bio && <p className="text-sm text-[var(--cc-text)]/90 mb-5">{profile.bio}</p>}
 
       <div className="grid grid-cols-2 gap-2.5 mb-2">
         <button
           onClick={() => setShowCrushList("hunt")}
-          className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
+          className="bg-[var(--cc-surface)] rounded-xl py-3 text-center border border-white/5"
         >
           <p className="font-display text-xl">{huntCount === null ? "—" : huntCount}</p>
-          <p className="text-[11px] text-[#6B5B73] mt-0.5">Hunt</p>
+          <p className="text-[11px] text-[var(--cc-dim)] mt-0.5">Hunt</p>
         </button>
         <button
           onClick={() => setShowCrushList("hunted")}
-          className="bg-[#2A1830] rounded-xl py-3 text-center border border-white/5"
+          className="bg-[var(--cc-surface)] rounded-xl py-3 text-center border border-white/5"
         >
           <p className="font-display text-xl">{huntedCount === null ? "—" : huntedCount}</p>
-          <p className="text-[11px] text-[#6B5B73] mt-0.5">Hunted</p>
+          <p className="text-[11px] text-[var(--cc-dim)] mt-0.5">Hunted</p>
         </button>
       </div>
 
       {profile.show_impressions && (
-        <div className="bg-[#2A1830] rounded-xl py-2.5 text-center border border-white/5 mb-2">
-          <p className="text-xs text-[#B8A9C0]">
+        <div className="bg-[var(--cc-surface)] rounded-xl py-2.5 text-center border border-white/5 mb-2">
+          <p className="text-xs text-[var(--cc-muted)]">
             <span className="font-display text-base mr-1">{impressions === null ? "—" : impressions}</span>
             Impressions this month
           </p>
@@ -3302,7 +3356,7 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
         <CrushListModal targetId={profile.id} mode={showCrushList} onClose={() => setShowCrushList(null)} onOpenProfile={() => {}} />
       )}
 
-      <p className="text-[10px] text-[#6B5B73] mb-5 px-1">
+      <p className="text-[10px] text-[var(--cc-dim)] mb-5 px-1">
         Post and Impressions are only visible to you. Hunt &amp; Hunted (count and who) are public. Matches are shown in Message.
       </p>
 
@@ -3315,7 +3369,7 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
         </button>
         <button
           onClick={shareProfile}
-          className="px-4 py-3 rounded-full border border-white/10 text-[#B8A9C0] flex items-center justify-center"
+          className="px-4 py-3 rounded-full border border-white/10 text-[var(--cc-muted)] flex items-center justify-center"
         >
           <Share2 size={16} />
         </button>
@@ -3324,7 +3378,7 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
       {(profile.prompts || []).length > 0 && (
         <div className="space-y-3 mb-5">
           {profile.prompts.map((p, i) => (
-            <div key={i} className="bg-[#2A1830] rounded-xl p-4 border border-white/5">
+            <div key={i} className="bg-[var(--cc-surface)] rounded-xl p-4 border border-white/5">
               <p className="text-[11px] text-[#FFB84D]">{p.q}</p>
               <p className="text-sm mt-1">{p.a}</p>
             </div>
@@ -3333,7 +3387,7 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
       )}
 
       <div className="mb-5">
-        <p className="text-[11px] text-[#6B5B73] mb-2">you're looking for</p>
+        <p className="text-[11px] text-[var(--cc-dim)] mb-2">you're looking for</p>
         <div className="flex flex-wrap gap-1.5">
           {(profile.intents || []).map((id) => {
             const meta = intentMeta(id);
@@ -3352,13 +3406,13 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
 
       {(profile.photos || []).length > 0 && (
         <div className="mb-5">
-          <p className="text-[11px] text-[#6B5B73] mb-2">your photos</p>
+          <p className="text-[11px] text-[var(--cc-dim)] mb-2">your photos</p>
           <div className="grid grid-cols-3 gap-1.5">
             {profile.photos.map((url) => (
               <button
                 key={url}
                 onClick={() => setLightbox(url)}
-                className="aspect-square rounded-lg overflow-hidden bg-[#2A1830]"
+                className="aspect-square rounded-lg overflow-hidden bg-[var(--cc-surface)]"
               >
                 <img src={url} alt="" className="w-full h-full object-cover" />
               </button>
@@ -3368,8 +3422,8 @@ function ProfileTab({ profile, onLogout, onUpdate, onOpenProfile }) {
       )}
 
       <div className="flex items-start gap-2 mt-6 px-1 pb-4">
-        <ShieldCheck size={14} className="text-[#6B5B73] mt-0.5 shrink-0" />
-        <p className="text-[11px] text-[#6B5B73]">
+        <ShieldCheck size={14} className="text-[var(--cc-dim)] mt-0.5 shrink-0" />
+        <p className="text-[11px] text-[var(--cc-dim)]">
           This is a test build for your college. Full version will add ID verification before wider launch.
         </p>
       </div>
@@ -3463,7 +3517,7 @@ function OwnPostsSection({ profileId, pinnedIds, onUpdate, myId, onOpenProfile }
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex-1 py-2.5 flex items-center justify-center border-b-2 ${
-              tab === t.id ? "border-[#FF4D6D] text-[#FF4D6D]" : "border-transparent text-[#6B5B73]"
+              tab === t.id ? "border-[#FF4D6D] text-[#FF4D6D]" : "border-transparent text-[var(--cc-dim)]"
             }`}
           >
             <t.icon size={18} />
@@ -3471,14 +3525,14 @@ function OwnPostsSection({ profileId, pinnedIds, onUpdate, myId, onOpenProfile }
         ))}
       </div>
 
-      {loading && <p className="text-center text-[#6B5B73] text-sm py-6">loading...</p>}
+      {loading && <p className="text-center text-[var(--cc-dim)] text-sm py-6">loading...</p>}
       {!loading && orderedList.length === 0 && (
-        <p className="text-center text-[#6B5B73] text-sm py-6">Nothing here yet.</p>
+        <p className="text-center text-[var(--cc-dim)] text-sm py-6">Nothing here yet.</p>
       )}
 
       <div className="grid grid-cols-3 gap-1.5">
         {orderedList.filter(Boolean).map((post) => (
-          <div key={post.id} className="relative aspect-square rounded-lg overflow-hidden bg-[#2A1830] group">
+          <div key={post.id} className="relative aspect-square rounded-lg overflow-hidden bg-[var(--cc-surface)] group">
             <button onClick={() => setOpenPost(post)} className="w-full h-full">
               {post.media_type === "video" ? (
                 <video src={post.media_url} className="w-full h-full object-cover" />
@@ -3539,29 +3593,29 @@ function FollowListScreen({ myId, mode, onBack }) {
   return (
     <div className="p-5">
       <div className="flex items-center gap-3 mb-5">
-        <button onClick={onBack} className="text-[#B8A9C0]">
+        <button onClick={onBack} className="text-[var(--cc-muted)]">
           <ArrowLeft size={20} />
         </button>
         <h1 className="font-display text-2xl">{mode === "followers" ? "Followers" : "Following"}</h1>
       </div>
 
-      {loading && <p className="text-center text-[#B8A9C0] text-sm py-8">loading...</p>}
+      {loading && <p className="text-center text-[var(--cc-muted)] text-sm py-8">loading...</p>}
 
       {!loading && people.length === 0 && (
-        <p className="text-center text-[#6B5B73] text-sm py-8">
+        <p className="text-center text-[var(--cc-dim)] text-sm py-8">
           {mode === "followers" ? "No one has liked you yet." : "You haven't liked anyone yet."}
         </p>
       )}
 
       <div className="space-y-2.5">
         {people.map((p) => (
-          <div key={p.id} className="flex items-center gap-3 bg-[#2A1830] rounded-xl p-3 border border-white/5">
+          <div key={p.id} className="flex items-center gap-3 bg-[var(--cc-surface)] rounded-xl p-3 border border-white/5">
             <div className="w-11 h-11 rounded-full overflow-hidden shrink-0">
               <Avatar profile={p} textSize="text-lg" />
             </div>
             <div>
               <p className="text-sm font-medium">{p.name}</p>
-              <p className="text-xs text-[#6B5B73]">@{p.username}</p>
+              <p className="text-xs text-[var(--cc-dim)]">@{p.username}</p>
             </div>
           </div>
         ))}
@@ -3672,7 +3726,7 @@ function EditProfile({ profile, onDone, onCancel }) {
   return (
     <div className="p-5">
       <div className="flex items-center gap-3 mb-5">
-        <button onClick={onCancel} className="text-[#B8A9C0]">
+        <button onClick={onCancel} className="text-[var(--cc-muted)]">
           <ArrowLeft size={20} />
         </button>
         <h1 className="font-display text-2xl">Edit profile</h1>
@@ -3680,10 +3734,10 @@ function EditProfile({ profile, onDone, onCancel }) {
 
       <div className="space-y-5">
         <div>
-          <p className="text-[11px] text-[#6B5B73] mb-2">photos</p>
+          <p className="text-[11px] text-[var(--cc-dim)] mb-2">photos</p>
           <div className="grid grid-cols-3 gap-2.5">
             {photos.map((url) => (
-              <div key={url} className="relative aspect-square rounded-xl overflow-hidden bg-[#2A1830]">
+              <div key={url} className="relative aspect-square rounded-xl overflow-hidden bg-[var(--cc-surface)]">
                 <img src={url} alt="" className="w-full h-full object-cover" />
                 <button
                   onClick={() => removePhoto(url)}
@@ -3697,7 +3751,7 @@ function EditProfile({ profile, onDone, onCancel }) {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="aspect-square rounded-xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-1 text-[#6B5B73]"
+                className="aspect-square rounded-xl border border-dashed border-white/20 flex flex-col items-center justify-center gap-1 text-[var(--cc-dim)]"
               >
                 {uploading ? <span className="text-xs">uploading...</span> : <Plus size={18} />}
               </button>
@@ -3707,43 +3761,43 @@ function EditProfile({ profile, onDone, onCancel }) {
         </div>
 
         <div>
-          <label className="text-xs text-[#B8A9C0] block mb-1.5">Name</label>
+          <label className="text-xs text-[var(--cc-muted)] block mb-1.5">Name</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+            className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
           />
         </div>
 
         <div className="flex gap-3">
           <div className="flex-1">
-            <label className="text-xs text-[#B8A9C0] block mb-1.5">Age</label>
+            <label className="text-xs text-[var(--cc-muted)] block mb-1.5">Age</label>
             <input
               type="number"
               value={age}
               onChange={(e) => setAge(e.target.value)}
-              className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+              className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
             />
           </div>
           <div className="flex-[2]">
-            <label className="text-xs text-[#B8A9C0] block mb-1.5">College</label>
+            <label className="text-xs text-[var(--cc-muted)] block mb-1.5">College</label>
             <input
               value={college}
               onChange={(e) => setCollege(e.target.value)}
-              className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
+              className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D]"
             />
           </div>
         </div>
 
         <div>
-          <label className="text-xs text-[#B8A9C0] block mb-1.5">Gender</label>
+          <label className="text-xs text-[var(--cc-muted)] block mb-1.5">Gender</label>
           <div className="flex gap-2">
             {["Woman", "Man", "Other"].map((g) => (
               <button
                 key={g}
                 onClick={() => setGender(g)}
                 className={`px-4 py-2 rounded-full text-sm border ${
-                  gender === g ? "bg-[#FF4D6D] border-[#FF4D6D] text-white" : "border-white/10 text-[#B8A9C0]"
+                  gender === g ? "bg-[#FF4D6D] border-[#FF4D6D] text-white" : "border-white/10 text-[var(--cc-muted)]"
                 }`}
               >
                 {g}
@@ -3754,19 +3808,19 @@ function EditProfile({ profile, onDone, onCancel }) {
 
         <div>
           <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs text-[#B8A9C0]">Bio</label>
-            <span className="text-[11px] text-[#6B5B73]">{wordCount(bio)}/101 words</span>
+            <label className="text-xs text-[var(--cc-muted)]">Bio</label>
+            <span className="text-[11px] text-[var(--cc-dim)]">{wordCount(bio)}/101 words</span>
           </div>
           <textarea
             value={bio}
             onChange={(e) => handleBioChange(e.target.value)}
             rows={4}
-            className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D] resize-none"
+            className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D] resize-none"
           />
         </div>
 
         <div>
-          <p className="text-[11px] text-[#6B5B73] mb-2">looking for</p>
+          <p className="text-[11px] text-[var(--cc-dim)] mb-2">looking for</p>
           <div className="grid grid-cols-1 gap-2">
             {INTENTS.map((intent) => {
               const active = intents.includes(intent.id);
@@ -3778,10 +3832,10 @@ function EditProfile({ profile, onDone, onCancel }) {
                   style={
                     active
                       ? { backgroundColor: intent.color + "22", borderColor: intent.color }
-                      : { borderColor: "rgba(255,255,255,0.1)", backgroundColor: "#2A1830" }
+                      : { borderColor: "rgba(255,255,255,0.1)", backgroundColor: "var(--cc-surface)" }
                   }
                 >
-                  <span className="text-sm" style={{ color: active ? intent.color : "#F5EDE4" }}>
+                  <span className="text-sm" style={{ color: active ? intent.color : "var(--cc-text)" }}>
                     {intent.label}
                   </span>
                 </button>
@@ -3793,16 +3847,16 @@ function EditProfile({ profile, onDone, onCancel }) {
               value={intentOther}
               onChange={(e) => setIntentOther(e.target.value)}
               placeholder="Tell us what you're looking for..."
-              className="w-full bg-[#2A1830] border border-white/10 rounded-xl px-4 py-3 mt-2.5 outline-none focus:border-[#FF4D6D]"
+              className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 mt-2.5 outline-none focus:border-[#FF4D6D]"
             />
           )}
         </div>
 
         <div>
-          <p className="text-[11px] text-[#6B5B73] mb-2">prompts</p>
+          <p className="text-[11px] text-[var(--cc-dim)] mb-2">prompts</p>
           <div className="space-y-3">
             {selectedPrompts.map((p, i) => (
-              <div key={i} className="bg-[#2A1830] rounded-xl p-4 border border-white/5">
+              <div key={i} className="bg-[var(--cc-surface)] rounded-xl p-4 border border-white/5">
                 <div className="flex items-center justify-between mb-2">
                   <select
                     value={p.q}
@@ -3810,12 +3864,12 @@ function EditProfile({ profile, onDone, onCancel }) {
                     className="bg-transparent text-[#FFB84D] text-sm font-medium outline-none"
                   >
                     {PROMPT_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt} className="bg-[#2A1830]">
+                      <option key={opt} value={opt} className="bg-[var(--cc-surface)]">
                         {opt}
                       </option>
                     ))}
                   </select>
-                  <button onClick={() => removePrompt(i)} className="text-[#6B5B73]">
+                  <button onClick={() => removePrompt(i)} className="text-[var(--cc-dim)]">
                     <X size={16} />
                   </button>
                 </div>
@@ -3823,14 +3877,14 @@ function EditProfile({ profile, onDone, onCancel }) {
                   value={p.a}
                   onChange={(e) => updatePromptAnswer(i, e.target.value)}
                   rows={2}
-                  className="w-full bg-transparent text-sm outline-none resize-none placeholder-[#6B5B73]"
+                  className="w-full bg-transparent text-sm outline-none resize-none placeholder-[var(--cc-dim)]"
                 />
               </div>
             ))}
             {selectedPrompts.length < 3 && (
               <button
                 onClick={addPromptSlot}
-                className="w-full py-3 rounded-xl border border-dashed border-white/20 text-[#B8A9C0] text-sm flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-xl border border-dashed border-white/20 text-[var(--cc-muted)] text-sm flex items-center justify-center gap-2"
               >
                 <Plus size={16} /> Add a prompt
               </button>
@@ -3884,17 +3938,17 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
   return (
     <div className="p-5">
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={onBack} className="text-[#B8A9C0]">
+        <button onClick={onBack} className="text-[var(--cc-muted)]">
           <ArrowLeft size={20} />
         </button>
         <h1 className="font-display text-2xl">Settings</h1>
       </div>
 
-      <div className="bg-[#2A1830] rounded-xl p-4 border border-white/5 mb-2.5">
+      <div className="bg-[var(--cc-surface)] rounded-xl p-4 border border-white/5 mb-2.5">
         <div className="flex items-center justify-between">
           <div className="pr-3">
             <p className="text-sm font-medium">Personal account</p>
-            <p className="text-[11px] text-[#6B5B73] mt-0.5">
+            <p className="text-[11px] text-[var(--cc-dim)] mt-0.5">
               Show your age, city, state & college on your profile. Off by default.
             </p>
           </div>
@@ -3915,11 +3969,11 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
         </div>
       </div>
 
-      <div className="bg-[#2A1830] rounded-xl p-4 border border-white/5 mb-2.5">
+      <div className="bg-[var(--cc-surface)] rounded-xl p-4 border border-white/5 mb-2.5">
         <div className="flex items-center justify-between">
           <div className="pr-3">
             <p className="text-sm font-medium">Show impressions</p>
-            <p className="text-[11px] text-[#6B5B73] mt-0.5">
+            <p className="text-[11px] text-[var(--cc-dim)] mt-0.5">
               See how many people viewed your profile this month. Only visible to you. Off by default.
             </p>
           </div>
@@ -3941,21 +3995,21 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
       <div className="space-y-2.5">
         <button
           onClick={() => setShowSaved(true)}
-          className="w-full flex items-center gap-3 bg-[#2A1830] rounded-xl p-4 text-left border border-white/5"
+          className="w-full flex items-center gap-3 bg-[var(--cc-surface)] rounded-xl p-4 text-left border border-white/5"
         >
-          <Bookmark size={18} className="text-[#B8A9C0]" />
+          <Bookmark size={18} className="text-[var(--cc-muted)]" />
           <span className="text-sm">Saved posts</span>
         </button>
         <button
           onClick={onLogout}
-          className="w-full flex items-center gap-3 bg-[#2A1830] rounded-xl p-4 text-left border border-white/5"
+          className="w-full flex items-center gap-3 bg-[var(--cc-surface)] rounded-xl p-4 text-left border border-white/5"
         >
-          <LogOut size={18} className="text-[#B8A9C0]" />
+          <LogOut size={18} className="text-[var(--cc-muted)]" />
           <span className="text-sm">Log out</span>
         </button>
       </div>
 
-      <p className="text-[11px] text-[#6B5B73] mt-6 px-1">
+      <p className="text-[11px] text-[var(--cc-dim)] mt-6 px-1">
         Need to delete your account or report a problem? That's not automated yet in this test build —
         reach out to whoever invited you to the pilot.
       </p>
@@ -3996,21 +4050,21 @@ function SavedPostsScreen({ myId, onBack }) {
         </div>
       )}
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={onBack} className="text-[#B8A9C0]">
+        <button onClick={onBack} className="text-[var(--cc-muted)]">
           <ArrowLeft size={20} />
         </button>
         <h1 className="font-display text-2xl">Saved posts</h1>
       </div>
-      {loading && <p className="text-center text-[#6B5B73] text-sm py-6">loading...</p>}
+      {loading && <p className="text-center text-[var(--cc-dim)] text-sm py-6">loading...</p>}
       {!loading && posts.length === 0 && (
-        <p className="text-center text-[#6B5B73] text-sm py-8">No saved posts yet.</p>
+        <p className="text-center text-[var(--cc-dim)] text-sm py-8">No saved posts yet.</p>
       )}
       <div className="grid grid-cols-3 gap-1.5">
         {posts.map((post) => (
           <button
             key={post.id}
             onClick={() => setLightbox(post)}
-            className="aspect-square rounded-lg overflow-hidden bg-[#2A1830]"
+            className="aspect-square rounded-lg overflow-hidden bg-[var(--cc-surface)]"
           >
             {post.media_type === "video" ? (
               <video src={post.media_url} className="w-full h-full object-cover" />
@@ -4144,10 +4198,10 @@ function ChatRoom({ match, myId, onBack }) {
     <div className="flex flex-col min-h-[70vh]">
       {justMatched && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-40 px-6">
-          <div className="bg-[#2A1830] rounded-2xl p-6 text-center border border-[#FF4D6D]/30 max-w-xs">
+          <div className="bg-[var(--cc-surface)] rounded-2xl p-6 text-center border border-[#FF4D6D]/30 max-w-xs">
             <Sparkles size={28} className="text-[#FFB84D] mx-auto mb-2" />
             <h3 className="font-display text-2xl">You matched!</h3>
-            <p className="text-sm text-[#B8A9C0] mt-2">
+            <p className="text-sm text-[var(--cc-muted)] mt-2">
               You and {otherProfile?.name} confirmed each other. It's official.
             </p>
             <button
@@ -4161,14 +4215,14 @@ function ChatRoom({ match, myId, onBack }) {
       )}
 
       <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
-        <button onClick={onBack} className="text-[#B8A9C0]">
+        <button onClick={onBack} className="text-[var(--cc-muted)]">
           <ArrowLeft size={20} />
         </button>
         <span className="font-display text-lg flex-1">{otherProfile?.name || "Them"}</span>
         <button onClick={toggleCrush} className="p-1">
           <Heart
             size={20}
-            className={myCrushedThem ? "text-[#FF4D6D]" : "text-[#6B5B73]"}
+            className={myCrushedThem ? "text-[#FF4D6D]" : "text-[var(--cc-dim)]"}
             fill={myCrushedThem ? "#FF4D6D" : "none"}
           />
         </button>
@@ -4180,8 +4234,8 @@ function ChatRoom({ match, myId, onBack }) {
           <span className="text-[11px] text-[#FFB84D]">Matched</span>
         </div>
       ) : (
-        <div className="px-4 py-2.5 bg-[#2A1830] border-b border-white/5 flex items-center justify-between gap-3">
-          <p className="text-[11px] text-[#B8A9C0]">
+        <div className="px-4 py-2.5 bg-[var(--cc-surface)] border-b border-white/5 flex items-center justify-between gap-3">
+          <p className="text-[11px] text-[var(--cc-muted)]">
             {myConfirmed ? "Waiting for them to confirm..." : "Both crush + confirm to make it official."}
           </p>
           <button
@@ -4195,9 +4249,9 @@ function ChatRoom({ match, myId, onBack }) {
       )}
 
       <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
-        {loading && <p className="text-xs text-[#6B5B73] text-center">loading chat...</p>}
+        {loading && <p className="text-xs text-[var(--cc-dim)] text-center">loading chat...</p>}
         {!loading && messages.length === 0 && (
-          <p className="text-xs text-[#6B5B73] text-center mt-6">
+          <p className="text-xs text-[var(--cc-dim)] text-center mt-6">
             No messages yet. Break the ice — say something real.
           </p>
         )}
@@ -4205,7 +4259,7 @@ function ChatRoom({ match, myId, onBack }) {
           <div key={m.id} className={`flex ${m.sender_id === myId ? "justify-end" : "justify-start"}`}>
             <div
               className={`max-w-[75%] px-3.5 py-2 rounded-2xl text-sm ${
-                m.sender_id === myId ? "bg-[#FF4D6D] text-white" : "bg-[#2A1830] text-[#F5EDE4]"
+                m.sender_id === myId ? "bg-[#FF4D6D] text-white" : "bg-[var(--cc-surface)] text-[var(--cc-text)]"
               }`}
             >
               {m.content}
@@ -4216,7 +4270,7 @@ function ChatRoom({ match, myId, onBack }) {
       </div>
 
       {!canSend && (
-        <p className="text-[11px] text-[#6B5B73] text-center pb-1.5">
+        <p className="text-[11px] text-[var(--cc-dim)] text-center pb-1.5">
           Wait for them to reply before sending another message.
         </p>
       )}
@@ -4227,7 +4281,7 @@ function ChatRoom({ match, myId, onBack }) {
           onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder={canSend ? "Type a message..." : "Waiting for a reply..."}
           disabled={!canSend}
-          className="flex-1 bg-[#2A1830] border border-white/10 rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D] disabled:opacity-50"
+          className="flex-1 bg-[var(--cc-surface)] border border-white/10 rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D] disabled:opacity-50"
         />
         <button
           onClick={send}
