@@ -28,6 +28,7 @@ import {
   Hash,
   UserPlus,
   MoreHorizontal,
+  Palette,
 } from "lucide-react";
 
 const INTENTS = [
@@ -125,6 +126,11 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [viewingProfileId, setViewingProfileId] = useState(null);
   const [pendingSignup, setPendingSignup] = useState(null);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("cc_theme") || "original";
+    document.documentElement.setAttribute("data-theme", savedTheme);
+  }, []);
 
   useEffect(() => {
     const seen = localStorage.getItem("cc_seen_intro");
@@ -3912,6 +3918,17 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
   const [showImpressions, setShowImpressions] = useState(profile.show_impressions || false);
   const [saving, setSaving] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
+  const [showThemePicker, setShowThemePicker] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem("cc_theme") || "original");
+
+  function applyTheme(next) {
+    setTheme(next);
+    localStorage.setItem("cc_theme", next);
+    document.documentElement.setAttribute("data-theme", next);
+    setShowThemePicker(false);
+  }
+
+  const themeLabel = { original: "Original", dark: "Dark", light: "Light" }[theme];
 
   async function toggle() {
     const next = !showDetails;
@@ -3994,6 +4011,16 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
 
       <div className="space-y-2.5">
         <button
+          onClick={() => setShowThemePicker(true)}
+          className="w-full flex items-center justify-between gap-3 bg-[var(--cc-surface)] rounded-xl p-4 text-left border border-white/5"
+        >
+          <span className="flex items-center gap-3">
+            <Palette size={18} className="text-[var(--cc-muted)]" />
+            <span className="text-sm">Theme</span>
+          </span>
+          <span className="text-xs text-[var(--cc-dim)]">{themeLabel}</span>
+        </button>
+        <button
           onClick={() => setShowSaved(true)}
           className="w-full flex items-center gap-3 bg-[var(--cc-surface)] rounded-xl p-4 text-left border border-white/5"
         >
@@ -4008,6 +4035,41 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
           <span className="text-sm">Log out</span>
         </button>
       </div>
+
+      {showThemePicker && (
+        <div className="fixed inset-0 bg-black/70 z-40 flex items-end sm:items-center justify-center px-4">
+          <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-xs p-5">
+            <h3 className="font-display text-lg mb-3">Choose theme</h3>
+            <div className="space-y-2">
+              {[
+                { id: "original", label: "Original", hint: "Campus Circuit's signature look" },
+                { id: "dark", label: "Dark", hint: "Neutral true dark" },
+                { id: "light", label: "Light", hint: "Bright background" },
+              ].map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => applyTheme(t.id)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border text-left ${
+                    theme === t.id ? "border-[#FF4D6D] bg-[#FF4D6D]/10" : "border-white/10"
+                  }`}
+                >
+                  <span>
+                    <span className="text-sm block">{t.label}</span>
+                    <span className="text-[11px] text-[var(--cc-dim)]">{t.hint}</span>
+                  </span>
+                  {theme === t.id && <Check size={16} className="text-[#FF4D6D]" />}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowThemePicker(false)}
+              className="w-full mt-4 py-2.5 rounded-full border border-white/10 text-[var(--cc-muted)] text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       <p className="text-[11px] text-[var(--cc-dim)] mt-6 px-1">
         Need to delete your account or report a problem? That's not automated yet in this test build —
