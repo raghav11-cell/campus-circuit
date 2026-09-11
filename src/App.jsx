@@ -128,7 +128,7 @@ export default function App() {
   const [pendingSignup, setPendingSignup] = useState(null);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem("cc_theme") || "original";
+    const savedTheme = localStorage.getItem("cc_theme") || "dark";
     document.documentElement.setAttribute("data-theme", savedTheme);
   }, []);
 
@@ -3919,7 +3919,7 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
   const [saving, setSaving] = useState(false);
   const [showSaved, setShowSaved] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
-  const [theme, setTheme] = useState(() => localStorage.getItem("cc_theme") || "original");
+  const [theme, setTheme] = useState(() => localStorage.getItem("cc_theme") || "dark");
 
   function applyTheme(next) {
     setTheme(next);
@@ -3928,7 +3928,7 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
     setShowThemePicker(false);
   }
 
-  const themeLabel = { original: "Original", dark: "Dark", light: "Light" }[theme];
+  const themeLabel = { dark: "Dark", light: "Light" }[theme];
 
   async function toggle() {
     const next = !showDetails;
@@ -4042,8 +4042,7 @@ function SettingsScreen({ profile, onBack, onLogout, onUpdate }) {
             <h3 className="font-display text-lg mb-3">Choose theme</h3>
             <div className="space-y-2">
               {[
-                { id: "original", label: "Original", hint: "Campus Circuit's signature look" },
-                { id: "dark", label: "Dark", hint: "Neutral true dark" },
+                { id: "dark", label: "Dark", hint: "Default look" },
                 { id: "light", label: "Light", hint: "Bright background" },
               ].map((t) => (
                 <button
