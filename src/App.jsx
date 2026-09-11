@@ -549,9 +549,8 @@ function SearchIcon() {
 // ---------------- USER PROFILE VIEW (someone else's profile) ----------------
 function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
   const [target, setTarget] = useState(null);
-  const [posts, setPosts] = useState([]);
+  const [myProfile, setMyProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [postCount, setPostCount] = useState(null);
   const [huntCount, setHuntCount] = useState(null);
   const [huntedCount, setHuntedCount] = useState(null);
   const [lightbox, setLightbox] = useState(null);
@@ -562,9 +561,13 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
   const [hasStory, setHasStory] = useState(false);
   const [showPhotoChoice, setShowPhotoChoice] = useState(false);
   const [showStoryViewer, setShowStoryViewer] = useState(false);
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const [nextProfiles, setNextProfiles] = useState([]); // [{profile, seen}]
+  const carouselRef = useRef(null);
 
   useEffect(() => {
     load();
+    setPhotoIndex(0);
   }, [userId]);
 
   async function load() {
@@ -572,13 +575,8 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
     const { data: p } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
     setTarget(p);
 
-    const { data: postData } = await supabase
-      .from("posts")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-    setPosts(postData || []);
-    setPostCount((postData || []).length);
+    const { data: mine } = await supabase.from("profiles").select("*").eq("id", myId).maybeSingle();
+    setMyProfile(mine);
 
     const { count: huntedC } = await supabase
       .from("crushes")
@@ -610,6 +608,13 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
       setCrushed(!!myCrush);
 
       await supabase.from("profile_views").insert({ profile_id: userId, viewer_id: myId });
+
+      // "up next" — a couple of other profiles, with a seen/unseen signal
+      const { data: others } = await supabase.from("profiles").select("*").neq("id", userId).neq("id", myId).limit(10);
+      const { data: myViews } = await supabase.from("profile_views").select("profile_id").eq("viewer_id", myId);
+      const seenSet = new Set((myViews || []).map((v) => v.profile_id));
+      const picks = (others || []).slice(0, 2).map((prof) => ({ profile: prof, seen: seenSet.has(prof.id) }));
+      setNextProfiles(picks);
     }
 
     setLoading(false);
@@ -656,6 +661,25 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
     if (matchRow) onStartChat(matchRow);
   }
 
+  function handleCarouselScroll() {
+    const el = carouselRef.current;
+    if (!el) return;
+    const idx = Math.round(el.scrollLeft / el.clientWidth);
+    setPhotoIndex(idx);
+  }
+
+  // "Vibe match" — how many things this person shares with me
+  function vibeScore() {
+    if (!myProfile || !target) return null;
+    const bits = [];
+    const sharedIntents = (target.intents || []).filter((i) => (myProfile.intents || []).includes(i));
+    if (sharedIntents.length > 0) bits.push(`${sharedIntents.length} shared intent${sharedIntents.length > 1 ? "s" : ""}`);
+    if (myProfile.age && target.age && Math.abs(myProfile.age - target.age) <= 2) bits.push("similar age");
+    if (myProfile.college && target.college && myProfile.college === target.college) bits.push("same college");
+    if (myProfile.city && target.city && myProfile.city === target.city) bits.push("same city");
+    return bits;
+  }
+
   if (loading) {
     return (
       <div className="fixed inset-0 bg-[var(--cc-bg)] z-30 flex items-center justify-center">
@@ -676,9 +700,11 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
   }
 
   const isMe = userId === myId;
+  const photos = target.photos || [];
+  const vibe = vibeScore();
 
   return (
-    <div className="fixed inset-0 bg-[var(--cc-bg)] z-30 overflow-y-auto">
+    <div className="fixed inset-0 bg-[var(--cc-bg)] z-30 flex flex-col">
       {lightbox && lightbox.url && (
         <div
           className="fixed inset-0 bg-black/90 z-40 flex items-center justify-center px-4"
@@ -692,173 +718,229 @@ function UserProfileView({ userId, myId, onBack, onOpenProfile, onStartChat }) {
         </div>
       )}
 
-      <div className="max-w-md mx-auto w-full p-5">
-        <div className="flex items-center gap-3 mb-5">
-          <button onClick={onBack} className="text-[var(--cc-muted)]">
-            <ArrowLeft size={20} />
-          </button>
-          <h1 className="font-display text-xl">@{target.username}</h1>
-        </div>
+      <div className="flex items-center gap-3 px-5 py-4 shrink-0 max-w-md mx-auto w-full">
+        <button onClick={onBack} className="text-[var(--cc-muted)]">
+          <ArrowLeft size={20} />
+        </button>
+        <h1 className="font-display text-xl">@{target.username}</h1>
+      </div>
 
-        <div className="flex items-center gap-4 mb-5">
-          <button
-            onClick={() => (hasStory ? setShowPhotoChoice(true) : setLightbox({ url: target.photos?.[0], type: "image" }))}
-            className={`w-20 h-20 rounded-full overflow-hidden shrink-0 border-2 ${
-              hasStory ? "border-[#FF4D6D]" : "border-[#FF4D6D]/40"
-            }`}
-          >
-            <Avatar profile={target} textSize="text-2xl" />
-          </button>
-          <div className="flex-1">
-            <h2 className="font-display text-xl leading-tight">
-              {target.name}
-              {target.show_details && target.age ? `, ${target.age}` : ""}
-            </h2>
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-md mx-auto w-full pb-28">
+          {photos.length > 0 ? (
+            <div>
+              <div
+                ref={carouselRef}
+                onScroll={handleCarouselScroll}
+                className="flex overflow-x-auto snap-x snap-mandatory"
+              >
+                {photos.map((url, i) => (
+                  <button
+                    key={url}
+                    onClick={() => setLightbox({ url, type: "image" })}
+                    className="w-full shrink-0 snap-center aspect-[3/4]"
+                  >
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+              {photos.length > 1 && (
+                <div className="flex items-center justify-center gap-1.5 py-2.5">
+                  {photos.map((_, i) => (
+                    <div
+                      key={i}
+                      className={`h-1.5 rounded-full transition-all ${
+                        i === photoIndex ? "w-5 bg-[#FF4D6D]" : "w-1.5 bg-white/15"
+                      }`}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => (hasStory ? setShowPhotoChoice(true) : null)}
+              className="w-full aspect-[3/4] flex items-center justify-center"
+            >
+              <Avatar profile={target} textSize="text-5xl" />
+            </button>
+          )}
+
+          <div className="px-5 pt-4">
+            <div className="flex items-center gap-2 mb-1">
+              <h2 className="font-display text-2xl leading-tight">
+                {target.name}
+                {target.show_details && target.age ? `, ${target.age}` : ""}
+              </h2>
+              {hasStory && (
+                <button
+                  onClick={() => setShowPhotoChoice(true)}
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF4D6D]/15 text-[#FF4D6D] border border-[#FF4D6D]/30"
+                >
+                  story
+                </button>
+              )}
+            </div>
             {target.show_details && (target.city || target.college) && (
-              <p className="text-xs text-[var(--cc-muted)] mt-0.5">
+              <p className="text-xs text-[var(--cc-muted)] mb-2">
                 {target.city}
                 {target.college ? ` · ${target.college}` : ""}
               </p>
             )}
-          </div>
-        </div>
 
-        {showPhotoChoice && (
-          <div className="fixed inset-0 bg-black/70 z-40 flex items-end sm:items-center justify-center px-6" onClick={() => setShowPhotoChoice(false)}>
-            <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-xs p-4" onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={() => {
-                  setShowPhotoChoice(false);
-                  setLightbox({ url: target.photos?.[0], type: "image" });
-                }}
-                className="w-full py-3 text-sm text-center border-b border-white/5"
+            {vibe && vibe.length > 0 && (
+              <div className="flex items-center gap-1.5 bg-[#4DD4C0]/10 border border-[#4DD4C0]/30 rounded-full px-3 py-1.5 w-fit mb-4 mt-2">
+                <Sparkles size={12} className="text-[#4DD4C0]" />
+                <span className="text-[11px] text-[#4DD4C0]">{vibe.join(" · ")}</span>
+              </div>
+            )}
+
+            {showPhotoChoice && (
+              <div
+                className="fixed inset-0 bg-black/70 z-40 flex items-end sm:items-center justify-center px-6"
+                onClick={() => setShowPhotoChoice(false)}
               >
-                View profile photo
+                <div
+                  className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-xs p-4"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => {
+                      setShowPhotoChoice(false);
+                      setLightbox({ url: target.photos?.[0], type: "image" });
+                    }}
+                    className="w-full py-3 text-sm text-center border-b border-white/5"
+                  >
+                    View profile photo
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowPhotoChoice(false);
+                      setShowStoryViewer(true);
+                    }}
+                    className="w-full py-3 text-sm text-center text-[#FF4D6D]"
+                  >
+                    View story
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {showStoryViewer && (
+              <SingleUserStoryViewer userId={userId} myId={myId} profile={target} onClose={() => setShowStoryViewer(false)} />
+            )}
+
+            {target.bio && <p className="text-sm text-[var(--cc-text)]/90 mb-4">{target.bio}</p>}
+
+            <div className="grid grid-cols-2 gap-2.5 mb-5">
+              <button
+                onClick={() => setShowCrushList("hunt")}
+                className="bg-[var(--cc-surface)] rounded-xl py-3 text-center border border-white/5"
+              >
+                <p className="font-display text-lg">{huntCount === null ? "—" : huntCount}</p>
+                <p className="text-[10px] text-[var(--cc-dim)] mt-0.5">Hunt</p>
               </button>
               <button
-                onClick={() => {
-                  setShowPhotoChoice(false);
-                  setShowStoryViewer(true);
-                }}
-                className="w-full py-3 text-sm text-center text-[#FF4D6D]"
+                onClick={() => setShowCrushList("hunted")}
+                className="bg-[var(--cc-surface)] rounded-xl py-3 text-center border border-white/5"
               >
-                View story
+                <p className="font-display text-lg">{huntedCount === null ? "—" : huntedCount}</p>
+                <p className="text-[10px] text-[var(--cc-dim)] mt-0.5">Hunted</p>
               </button>
             </div>
+
+            {showCrushList && (
+              <CrushListModal
+                targetId={userId}
+                mode={showCrushList}
+                onClose={() => setShowCrushList(null)}
+                onOpenProfile={onOpenProfile}
+              />
+            )}
+
+            {(target.prompts || []).length > 0 && (
+              <div className="space-y-3 mb-5">
+                {target.prompts.map((p, i) => (
+                  <div key={i} className="bg-[var(--cc-surface)] rounded-xl p-4 border border-white/5">
+                    <p className="text-[11px] text-[#FFB84D]">{p.q}</p>
+                    <p className="text-sm mt-1">{p.a}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mb-6">
+              <p className="text-[11px] text-[var(--cc-dim)] mb-2">looking for</p>
+              <div className="flex flex-wrap gap-1.5">
+                {(target.intents || []).map((id) => {
+                  const meta = intentMeta(id);
+                  const shared = (myProfile?.intents || []).includes(id);
+                  return (
+                    <span
+                      key={id}
+                      className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1"
+                      style={{ backgroundColor: meta.color + (shared ? "33" : "22"), color: meta.color }}
+                    >
+                      {shared && <Check size={10} />}
+                      {id === "other" ? target.intent_other || "Other" : meta.label}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {!isMe && nextProfiles.length > 0 && (
+              <div>
+                <p className="text-[11px] text-[var(--cc-dim)] mb-2">up next</p>
+                <div className="flex gap-2.5">
+                  {nextProfiles.map((np) => (
+                    <button
+                      key={np.profile.id}
+                      onClick={() => onOpenProfile(np.profile.id)}
+                      className="flex-1 bg-[var(--cc-surface)] rounded-xl p-2.5 border border-white/5 text-left relative"
+                    >
+                      <div className="w-full aspect-square rounded-lg overflow-hidden mb-1.5 relative">
+                        <Avatar profile={np.profile} textSize="text-lg" />
+                        {np.seen && (
+                          <div className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center">
+                            <Check size={11} className="text-[#4DD4C0]" />
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs font-medium truncate">{np.profile.name}</p>
+                      {np.seen && <p className="text-[9px] text-[#4DD4C0]">already seen</p>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
+      </div>
 
-        {showStoryViewer && (
-          <SingleUserStoryViewer userId={userId} myId={myId} profile={target} onClose={() => setShowStoryViewer(false)} />
-        )}
-
-        {target.bio && <p className="text-sm text-[var(--cc-text)]/90 mb-5">{target.bio}</p>}
-
-        {!isMe && (
-          <div className="flex gap-2.5 mb-5">
+      {!isMe && (
+        <div className="shrink-0 border-t border-white/5 bg-[var(--cc-bg)] px-5 py-3 max-w-md mx-auto w-full">
+          <div className="flex gap-2.5">
             <button
               onClick={toggleCrush}
               disabled={crushBusy}
-              className={`flex-1 py-2.5 rounded-full border text-sm flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-3 rounded-full border text-sm flex items-center justify-center gap-1.5 ${
                 crushed ? "bg-[#FF4D6D]/15 border-[#FF4D6D] text-[#FF4D6D]" : "border-white/10 text-[var(--cc-muted)]"
               }`}
             >
-              <Heart size={15} fill={crushed ? "#FF4D6D" : "none"} />
+              <Heart size={16} fill={crushed ? "#FF4D6D" : "none"} />
               {crushed ? "Hunted" : "Hunt"}
             </button>
             <button
               onClick={sendMessage}
               disabled={startingChat}
-              className="flex-1 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm flex items-center justify-center gap-1.5"
+              className="flex-1 py-3 rounded-full bg-[#FF4D6D] text-white text-sm flex items-center justify-center gap-1.5"
             >
-              <MessageCircle size={15} />
+              <MessageCircle size={16} />
               {startingChat ? "Opening..." : "Message"}
             </button>
           </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-2.5 mb-5">
-          <button
-            onClick={() => setShowCrushList("hunt")}
-            className="bg-[var(--cc-surface)] rounded-xl py-3 text-center border border-white/5"
-          >
-            <p className="font-display text-lg">{huntCount === null ? "—" : huntCount}</p>
-            <p className="text-[10px] text-[var(--cc-dim)] mt-0.5">Hunt</p>
-          </button>
-          <button
-            onClick={() => setShowCrushList("hunted")}
-            className="bg-[var(--cc-surface)] rounded-xl py-3 text-center border border-white/5"
-          >
-            <p className="font-display text-lg">{huntedCount === null ? "—" : huntedCount}</p>
-            <p className="text-[10px] text-[var(--cc-dim)] mt-0.5">Hunted</p>
-          </button>
         </div>
-
-        {showCrushList && (
-          <CrushListModal
-            targetId={userId}
-            mode={showCrushList}
-            onClose={() => setShowCrushList(null)}
-            onOpenProfile={onOpenProfile}
-          />
-        )}
-
-        {(target.prompts || []).length > 0 && (
-          <div className="space-y-3 mb-5">
-            {target.prompts.map((p, i) => (
-              <div key={i} className="bg-[var(--cc-surface)] rounded-xl p-4 border border-white/5">
-                <p className="text-[11px] text-[#FFB84D]">{p.q}</p>
-                <p className="text-sm mt-1">{p.a}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="mb-5">
-          <p className="text-[11px] text-[var(--cc-dim)] mb-2">looking for</p>
-          <div className="flex flex-wrap gap-1.5">
-            {(target.intents || []).map((id) => {
-              const meta = intentMeta(id);
-              return (
-                <span
-                  key={id}
-                  className="text-xs px-2.5 py-1 rounded-full"
-                  style={{ backgroundColor: meta.color + "22", color: meta.color }}
-                >
-                  {id === "other" ? target.intent_other || "Other" : meta.label}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-
-        {(target.photos || []).length > 0 && (
-          <div>
-            <p className="text-[11px] text-[var(--cc-dim)] mb-2">photos</p>
-            <div className="grid grid-cols-3 gap-1.5">
-              {target.photos.map((url) => (
-                <button
-                  key={url}
-                  onClick={() => setLightbox({ url, type: "image" })}
-                  className="aspect-square rounded-lg overflow-hidden bg-[var(--cc-surface)]"
-                >
-                  <img src={url} alt="" className="w-full h-full object-cover" />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      {lightbox && lightbox.media_url && (
-        <PostDetail
-          post={lightbox}
-          myId={myId}
-          onClose={() => {
-            setLightbox(null);
-            load();
-          }}
-          onOpenProfile={onOpenProfile}
-        />
       )}
     </div>
   );
@@ -2987,7 +3069,7 @@ function BrowseTab({ profile }) {
   }
 
   return (
-    <div className="p-5 relative">
+    <div className="p-5 relative min-h-[calc(100vh-140px)] flex flex-col justify-center">
       {matchToast && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-20 px-6">
           <div className="bg-[var(--cc-surface)] rounded-2xl p-6 text-center border border-[#FF4D6D]/30 max-w-xs">
