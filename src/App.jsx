@@ -3028,10 +3028,24 @@ function BrowseTab({ profile }) {
   const [passed, setPassed] = useState({});
   const [matchToast, setMatchToast] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [photoIndex, setPhotoIndex] = useState(0);
+  const carouselRef = useRef(null);
 
   useEffect(() => {
     loadPool();
   }, []);
+
+  useEffect(() => {
+    setPhotoIndex(0);
+    if (carouselRef.current) carouselRef.current.scrollLeft = 0;
+  }, [index]);
+
+  function handleCarouselScroll() {
+    const el = carouselRef.current;
+    if (!el) return;
+    const idx = Math.round(el.scrollLeft / el.clientWidth);
+    setPhotoIndex(idx);
+  }
 
   async function loadPool() {
     setLoading(true);
@@ -3042,6 +3056,17 @@ function BrowseTab({ profile }) {
 
   const visible = pool.filter((p) => !passed[p.id]);
   const current = visible[index];
+
+  function vibeBits(target) {
+    if (!target) return [];
+    const bits = [];
+    const sharedIntents = (target.intents || []).filter((i) => (profile.intents || []).includes(i));
+    if (sharedIntents.length > 0) bits.push(`${sharedIntents.length} shared intent${sharedIntents.length > 1 ? "s" : ""}`);
+    if (profile.age && target.age && Math.abs(profile.age - target.age) <= 2) bits.push("similar age");
+    if (profile.college && target.college && profile.college === target.college) bits.push("same college");
+    if (profile.city && target.city && profile.city === target.city) bits.push("same city");
+    return bits;
+  }
 
   async function swipe(target, liked) {
     setPassed((prev) => ({ ...prev, [target.id]: true }));
@@ -3067,6 +3092,9 @@ function BrowseTab({ profile }) {
   if (loading) {
     return <div className="p-8 text-center text-[var(--cc-muted)] text-sm">loading profiles...</div>;
   }
+
+  const vibe = current ? vibeBits(current) : [];
+  const photos = current?.photos || [];
 
   return (
     <div className="p-5 relative min-h-[calc(100vh-140px)] flex flex-col justify-center">
@@ -3100,9 +3128,37 @@ function BrowseTab({ profile }) {
       {current && (
         <>
           <div className="bg-[var(--cc-surface)] rounded-2xl overflow-hidden border border-white/5">
-            <div className="aspect-[4/3]">
-              <Avatar profile={current} />
-            </div>
+            {photos.length > 0 ? (
+              <div>
+                <div
+                  ref={carouselRef}
+                  onScroll={handleCarouselScroll}
+                  className="flex overflow-x-auto snap-x snap-mandatory"
+                >
+                  {photos.map((url) => (
+                    <div key={url} className="w-full shrink-0 snap-center aspect-[4/3]">
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+                </div>
+                {photos.length > 1 && (
+                  <div className="flex items-center justify-center gap-1.5 py-2">
+                    {photos.map((_, i) => (
+                      <div
+                        key={i}
+                        className={`h-1.5 rounded-full transition-all ${
+                          i === photoIndex ? "w-5 bg-[#FF4D6D]" : "w-1.5 bg-white/15"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="aspect-[4/3]">
+                <Avatar profile={current} />
+              </div>
+            )}
             <div className="p-5">
               <h2 className="font-display text-2xl">
                 {current.name}
@@ -3112,7 +3168,15 @@ function BrowseTab({ profile }) {
                 {current.city}
                 {current.college ? ` · ${current.college}` : ""}
               </p>
-              {current.bio && <p className="text-sm mt-2 text-[var(--cc-text)]/80 line-clamp-2">{current.bio}</p>}
+
+              {vibe.length > 0 && (
+                <div className="flex items-center gap-1.5 bg-[#4DD4C0]/10 border border-[#4DD4C0]/30 rounded-full px-3 py-1.5 w-fit mt-2.5">
+                  <Sparkles size={12} className="text-[#4DD4C0]" />
+                  <span className="text-[11px] text-[#4DD4C0]">{vibe.join(" · ")}</span>
+                </div>
+              )}
+
+              {current.bio && <p className="text-sm mt-3 text-[var(--cc-text)]/80 line-clamp-2">{current.bio}</p>}
               {(current.prompts || []).slice(0, 1).map((p, i) => (
                 <div key={i} className="mt-3">
                   <p className="text-[11px] text-[var(--cc-dim)]">{p.q}</p>
