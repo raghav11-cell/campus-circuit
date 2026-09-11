@@ -2,7 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --cc-bg: #1b0f23;
+  --cc-surface: #2a1830;
+  --cc-text: #f5ede4;
+  --cc-muted: #b8a9c0;
+  --cc-dim: #6b5b73;
+}
+
+[data-theme="dark"] {
+  --cc-bg: #1b0f23;
+  --cc-surface: #2a1830;
+  --cc-text: #f5ede4;
+  --cc-muted: #b8a9c0;
+  --cc-dim: #6b5b73;
+}
+
+[data-theme="light"] {
+  --cc-bg: #ffffff;
+  --cc-surface: #f5f3f7;
+  --cc-text: #1b0f23;
+  --cc-muted: #6b5b73;
+  --cc-dim: #9b8fa3;
+}
+
 body {
   margin: 0;
-  background-color: #1b0f23;
+  background-color: var(--cc-bg);
+  transition: background-color 0.2s ease;
+}
+
+/* Hide scrollbars everywhere while keeping scroll functional */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  display: none;
 }
