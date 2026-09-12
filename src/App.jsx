@@ -4438,6 +4438,15 @@ function ChatRoom({ match, myId, onBack }) {
   const [unlocked, setUnlocked] = useState(false);
   const [unlockPinInput, setUnlockPinInput] = useState("");
   const [unlockError, setUnlockError] = useState("");
+  const [msgMenuFor, setMsgMenuFor] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const bottomRef = useRef(null);
 
   const isUser1 = matchRow.user1_id === myId;
@@ -4446,6 +4455,7 @@ function ChatRoom({ match, myId, onBack }) {
   const myNickname = isUser1 ? matchRow.user1_nickname : matchRow.user2_nickname;
   const myPinned = isUser1 ? matchRow.user1_pinned : matchRow.user2_pinned;
   const myLockPin = isUser1 ? matchRow.user1_lock_pin : matchRow.user2_lock_pin;
+  const myClearedAt = isUser1 ? matchRow.user1_cleared_at : matchRow.user2_cleared_at;
   const displayName = myNickname || otherProfile?.name || "Them";
 
   useEffect(() => {
@@ -4488,12 +4498,17 @@ function ChatRoom({ match, myId, onBack }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from("blocks").select("id").eq("blocker_id", myId).eq("blocked_id", otherId).maybeSingle();
+      setBlocked(!!data);
+    })();
+  }, [otherId, myId]);
+
   async function load() {
-    const { data } = await supabase
-      .from("messages")
-      .select("*")
-      .eq("match_id", matchRow.id)
-      .order("created_at", { ascending: true });
+    let q = supabase.from("messages").select("*").eq("match_id", matchRow.id).order("created_at", { ascending: true });
+    if (myClearedAt) q = q.gt("created_at", myClearedAt);
+    const { data } = await q;
     setMessages(data || []);
     const { data: p } = await supabase.from("profiles").select("name, photos, last_seen").eq("id", otherId).maybeSingle();
     setOtherProfile(p);
@@ -4565,7 +4580,7 @@ function ChatRoom({ match, myId, onBack }) {
 
   const myMsgCount = messages.filter((m) => m.sender_id === myId).length;
   const theirMsgCount = messages.filter((m) => m.sender_id === otherId).length;
-  const canSend = theirMsgCount > 0 || myMsgCount === 0;
+  const canSend = (theirMsgCount > 0 || myMsgCount === 0) && !blocked;
 
   async function send() {
     if (!text.trim() || !canSend) return;
@@ -4598,6 +4613,65 @@ function ChatRoom({ match, myId, onBack }) {
     } else if (error) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
     }
+  }
+
+  function canEdit(m) {
+    return m.sender_id === myId && !m.deleted_for_everyone && Date.now() - new Date(m.created_at).getTime() < 10 * 60 * 1000;
+  }
+
+  function canDeleteForEveryone(m) {
+    if (m.sender_id !== myId || m.deleted_for_everyone) return false;
+    if (!m.read_at) return true;
+    return Date.now() - new Date(m.created_at).getTime() < 60 * 60 * 1000;
+  }
+
+  async function saveEdit() {
+    if (!editText.trim()) return;
+    await supabase.from("messages").update({ content: editText.trim(), edited: true }).eq("id", editingId);
+    setMessages((prev) => prev.map((m) => (m.id === editingId ? { ...m, content: editText.trim(), edited: true } : m)));
+    setEditingId(null);
+    setEditText("");
+    setMsgMenuFor(null);
+  }
+
+  async function deleteForEveryone(m) {
+    if (!confirm("Delete this message for everyone?")) return;
+    await supabase.from("messages").update({ deleted_for_everyone: true, content: "" }).eq("id", m.id);
+    setMessages((prev) => prev.map((x) => (x.id === m.id ? { ...x, deleted_for_everyone: true, content: "" } : x)));
+    setMsgMenuFor(null);
+  }
+
+  async function clearChat() {
+    const field = isUser1 ? "user1_cleared_at" : "user2_cleared_at";
+    const now = new Date().toISOString();
+    await supabase.from("matches").update({ [field]: now }).eq("id", matchRow.id);
+    setMatchRow((prev) => ({ ...prev, [field]: now }));
+    setMessages([]);
+    setShowClearConfirm(false);
+    setShowMenu(false);
+  }
+
+  async function toggleBlock() {
+    if (blocked) {
+      await supabase.from("blocks").delete().eq("blocker_id", myId).eq("blocked_id", otherId);
+      setBlocked(false);
+    } else {
+      await supabase.from("blocks").insert({ blocker_id: myId, blocked_id: otherId });
+      setBlocked(true);
+    }
+    setShowBlockConfirm(false);
+    setShowMenu(false);
+  }
+
+  function shareChat() {
+    const text = `Chat with ${otherProfile?.name || "someone"} on Campus Circuit`;
+    if (navigator.share) {
+      navigator.share({ title: "Campus Circuit", text }).catch(() => {});
+    } else {
+      navigator.clipboard?.writeText(text);
+      alert("Copied!");
+    }
+    setShowMenu(false);
   }
 
   async function saveNickname() {
@@ -4851,7 +4925,116 @@ function ChatRoom({ match, myId, onBack }) {
               Lock chat
             </button>
           )}
+          <button
+            onClick={() => {
+              setShowSearch(true);
+              setShowMenu(false);
+            }}
+            className="text-xs px-3 py-1.5 rounded-full border border-white/10 text-[var(--cc-muted)]"
+          >
+            Search
+          </button>
+          <button
+            onClick={shareChat}
+            className="text-xs px-3 py-1.5 rounded-full border border-white/10 text-[var(--cc-muted)]"
+          >
+            Share
+          </button>
+          <button
+            onClick={() => {
+              setShowClearConfirm(true);
+              setShowMenu(false);
+            }}
+            className="text-xs px-3 py-1.5 rounded-full border border-white/10 text-[var(--cc-muted)]"
+          >
+            Clear chat
+          </button>
+          <button
+            onClick={() => {
+              setShowReport(true);
+              setShowMenu(false);
+            }}
+            className="text-xs px-3 py-1.5 rounded-full border border-white/10 text-[var(--cc-muted)]"
+          >
+            Report
+          </button>
+          <button
+            onClick={() => setShowBlockConfirm(true)}
+            className="text-xs px-3 py-1.5 rounded-full border border-[#FF4D6D]/30 text-[#FF4D6D]"
+          >
+            {blocked ? "Unblock" : "Block"}
+          </button>
         </div>
+      )}
+
+      {showSearch && (
+        <div className="px-4 py-2 border-b border-white/5 flex items-center gap-2 shrink-0">
+          <Search size={14} className="text-[var(--cc-dim)]" />
+          <input
+            autoFocus
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search in this chat..."
+            className="flex-1 bg-transparent text-sm outline-none"
+          />
+          <button
+            onClick={() => {
+              setShowSearch(false);
+              setSearchQuery("");
+            }}
+            className="text-[var(--cc-dim)]"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {showClearConfirm && (
+        <div className="fixed inset-0 bg-black/70 z-40 flex items-center justify-center px-6">
+          <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-xs p-5">
+            <h3 className="font-display text-lg mb-1">Clear chat?</h3>
+            <p className="text-[11px] text-[var(--cc-dim)] mb-4">
+              This clears messages on your side only. {displayName} will still see them.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowClearConfirm(false)}
+                className="flex-1 py-2.5 rounded-full border border-white/10 text-[var(--cc-muted)] text-sm"
+              >
+                Cancel
+              </button>
+              <button onClick={clearChat} className="flex-1 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm">
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBlockConfirm && (
+        <div className="fixed inset-0 bg-black/70 z-40 flex items-center justify-center px-6">
+          <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-xs p-5">
+            <h3 className="font-display text-lg mb-1">{blocked ? "Unblock" : "Block"} {displayName}?</h3>
+            <p className="text-[11px] text-[var(--cc-dim)] mb-4">
+              {blocked ? "They'll be able to message you again." : "They won't be able to message you anymore."}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowBlockConfirm(false)}
+                className="flex-1 py-2.5 rounded-full border border-white/10 text-[var(--cc-muted)] text-sm"
+              >
+                Cancel
+              </button>
+              <button onClick={toggleBlock} className="flex-1 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm">
+                {blocked ? "Unblock" : "Block"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showReport && (
+        <ReportModal reporterId={myId} targetType="user" targetId={otherId} onClose={() => setShowReport(false)} />
       )}
 
       {matchRow.is_official ? (
@@ -4881,9 +5064,12 @@ function ChatRoom({ match, myId, onBack }) {
             No messages yet. Break the ice — say something real.
           </p>
         )}
-        {messages.map((m) => {
+        {messages
+          .filter((m) => !searchQuery.trim() || m.content.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+          .map((m) => {
           const repliedMsg = m.reply_to_id ? messageById[m.reply_to_id] : null;
           const isMine = m.sender_id === myId;
+          const isEditing = editingId === m.id;
           return (
             <div key={m.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"} group`}>
               {repliedMsg && (
@@ -4895,34 +5081,95 @@ function ChatRoom({ match, myId, onBack }) {
                   {repliedMsg.content.slice(0, 60)}
                 </div>
               )}
-              <div className="flex items-end gap-1.5">
-                {!isMine && (
-                  <button
-                    onClick={() => setReplyingTo(m)}
-                    className="opacity-0 group-hover:opacity-100 text-[var(--cc-dim)] transition-opacity"
-                  >
-                    <Reply size={13} />
-                  </button>
-                )}
-                <div
-                  className={`max-w-[75%] px-3.5 py-2 text-sm ${
-                    isMine
-                      ? "bg-[#FF4D6D] text-white rounded-2xl rounded-tr-sm"
-                      : "bg-[var(--cc-surface)] text-[var(--cc-text)] rounded-2xl rounded-tl-sm"
-                  }`}
-                >
-                  {m.content}
+
+              {isEditing ? (
+                <div className="max-w-[75%] w-full">
+                  <input
+                    autoFocus
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && saveEdit()}
+                    className="w-full bg-[var(--cc-surface)] border border-[#FF4D6D] rounded-xl px-3 py-2 text-sm outline-none"
+                  />
+                  <div className="flex gap-2 mt-1 justify-end">
+                    <button onClick={() => setEditingId(null)} className="text-[10px] text-[var(--cc-dim)]">
+                      Cancel
+                    </button>
+                    <button onClick={saveEdit} className="text-[10px] text-[#FF4D6D]">
+                      Save
+                    </button>
+                  </div>
                 </div>
-                {isMine && (
-                  <button
-                    onClick={() => setReplyingTo(m)}
-                    className="opacity-0 group-hover:opacity-100 text-[var(--cc-dim)] transition-opacity"
+              ) : (
+                <div className="flex items-end gap-1.5">
+                  {!isMine && !m.deleted_for_everyone && (
+                    <button
+                      onClick={() => setReplyingTo(m)}
+                      className="opacity-0 group-hover:opacity-100 text-[var(--cc-dim)] transition-opacity"
+                    >
+                      <Reply size={13} />
+                    </button>
+                  )}
+                  <div
+                    onClick={() => !m.deleted_for_everyone && setMsgMenuFor(msgMenuFor === m.id ? null : m.id)}
+                    className={`max-w-[75%] px-3.5 py-2 text-sm cursor-pointer ${
+                      m.deleted_for_everyone
+                        ? "italic text-[var(--cc-dim)] border border-white/10 rounded-2xl"
+                        : isMine
+                        ? "bg-[#FF4D6D] text-white rounded-2xl rounded-tr-sm"
+                        : "bg-[var(--cc-surface)] text-[var(--cc-text)] rounded-2xl rounded-tl-sm"
+                    }`}
                   >
-                    <Reply size={13} />
+                    {m.deleted_for_everyone ? "This message was deleted" : m.content}
+                    {m.edited && !m.deleted_for_everyone && (
+                      <span className={`text-[9px] ml-1.5 ${isMine ? "text-white/70" : "text-[var(--cc-dim)]"}`}>
+                        (edited)
+                      </span>
+                    )}
+                  </div>
+                  {isMine && !m.deleted_for_everyone && (
+                    <button
+                      onClick={() => setReplyingTo(m)}
+                      className="opacity-0 group-hover:opacity-100 text-[var(--cc-dim)] transition-opacity"
+                    >
+                      <Reply size={13} />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {msgMenuFor === m.id && !isEditing && (
+                <div className="flex gap-2 mt-1 px-1">
+                  <button
+                    onClick={() => {
+                      setReplyingTo(m);
+                      setMsgMenuFor(null);
+                    }}
+                    className="text-[10px] text-[var(--cc-muted)]"
+                  >
+                    Reply
                   </button>
-                )}
-              </div>
-              {isMine && (
+                  {canEdit(m) && (
+                    <button
+                      onClick={() => {
+                        setEditingId(m.id);
+                        setEditText(m.content);
+                        setMsgMenuFor(null);
+                      }}
+                      className="text-[10px] text-[var(--cc-muted)]"
+                    >
+                      Edit
+                    </button>
+                  )}
+                  {canDeleteForEveryone(m) && (
+                    <button onClick={() => deleteForEveryone(m)} className="text-[10px] text-[#FF4D6D]">
+                      Delete for everyone
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {isMine && !m.deleted_for_everyone && (
                 <span className="text-[9px] text-[var(--cc-dim)] mt-0.5 mr-1">{m.read_at ? "Seen" : "Sent"}</span>
               )}
             </div>
@@ -4953,7 +5200,7 @@ function ChatRoom({ match, myId, onBack }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder={canSend ? "Type a message..." : "Waiting for a reply..."}
+          placeholder={blocked ? "You blocked this person" : canSend ? "Type a message..." : "Waiting for a reply..."}
           disabled={!canSend}
           className="flex-1 bg-[var(--cc-surface)] border border-white/10 rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D] disabled:opacity-50"
         />
