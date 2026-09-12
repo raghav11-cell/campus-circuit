@@ -29,6 +29,9 @@ import {
   UserPlus,
   MoreHorizontal,
   Palette,
+  Lock,
+  Reply,
+  Edit3,
 } from "lucide-react";
 
 const INTENTS = [
@@ -176,6 +179,16 @@ export default function App() {
     return () => supabase.removeChannel(channel);
   }, [profile?.id]);
 
+  useEffect(() => {
+    if (!profile) return;
+    async function pingPresence() {
+      await supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", profile.id);
+    }
+    pingPresence();
+    const interval = setInterval(pingPresence, 60000);
+    return () => clearInterval(interval);
+  }, [profile?.id]);
+
   async function loadUnreadCount() {
     const { count } = await supabase
       .from("notifications")
@@ -289,6 +302,16 @@ export default function App() {
             setShowNotifications(false);
             setTab(t);
           }}
+          onOpenChat={async (matchId) => {
+            const { data } = await supabase.from("matches").select("*").eq("id", matchId).maybeSingle();
+            setShowNotifications(false);
+            if (data) {
+              setActiveChat(data);
+              setTab("chatroom");
+            } else {
+              setTab("matches");
+            }
+          }}
         />
       )}
 
@@ -351,7 +374,7 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-function NotificationsPanel({ myId, onClose, onRead, onNavigate }) {
+function NotificationsPanel({ myId, onClose, onRead, onNavigate, onOpenChat }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -409,6 +432,10 @@ function NotificationsPanel({ myId, onClose, onRead, onNavigate }) {
 
   function handleClick(n) {
     if (n.type === "tagged" && n.post_id) return; // handled by confirm/decline buttons instead
+    if ((n.type === "message" || n.type === "match") && n.match_id) {
+      onOpenChat(n.match_id);
+      return;
+    }
     const dest = n.type === "like" || n.type === "tagged" ? "profile" : "matches";
     onNavigate(dest);
   }
@@ -3232,6 +3259,9 @@ function BrowseTab({ profile }) {
 function MatchesTab({ myId, onOpen }) {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [unlockFor, setUnlockFor] = useState(null);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
 
   useEffect(() => {
     load();
@@ -3252,22 +3282,64 @@ function MatchesTab({ myId, onOpen }) {
 
     const enriched = await Promise.all(
       data.map(async (m) => {
-        const otherId = m.user1_id === myId ? m.user2_id : m.user1_id;
+        const isUser1 = m.user1_id === myId;
+        const otherId = isUser1 ? m.user2_id : m.user1_id;
         const { data: otherProfile } = await supabase
           .from("profiles")
-          .select("name, photos")
+          .select("name, photos, last_seen")
           .eq("id", otherId)
           .maybeSingle();
+
+        const { data: lastMsgs } = await supabase
+          .from("messages")
+          .select("content, sender_id, read_at, created_at")
+          .eq("match_id", m.id)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const lastMsg = lastMsgs?.[0];
+
+        const online = otherProfile?.last_seen
+          ? Date.now() - new Date(otherProfile.last_seen).getTime() < 3 * 60 * 1000
+          : false;
+
         return {
           ...m,
           otherId,
           otherName: otherProfile?.name || "Someone",
           otherPhoto: otherProfile?.photos?.[0],
+          online,
+          nickname: isUser1 ? m.user1_nickname : m.user2_nickname,
+          pinned: isUser1 ? m.user1_pinned : m.user2_pinned,
+          lockPin: isUser1 ? m.user1_lock_pin : m.user2_lock_pin,
+          lastMsg,
+          unread: lastMsg && lastMsg.sender_id !== myId && !lastMsg.read_at,
         };
       })
     );
+
+    enriched.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
     setMatches(enriched);
     setLoading(false);
+  }
+
+  function openChat(m) {
+    if (m.lockPin) {
+      setUnlockFor(m);
+      setPinInput("");
+      setPinError("");
+      return;
+    }
+    onOpen(m);
+  }
+
+  function tryUnlock() {
+    if (pinInput === unlockFor.lockPin) {
+      const target = unlockFor;
+      setUnlockFor(null);
+      onOpen(target);
+    } else {
+      setPinError("Wrong PIN");
+    }
   }
 
   if (loading) return <div className="p-8 text-center text-[var(--cc-muted)] text-sm">loading matches...</div>;
@@ -3285,28 +3357,89 @@ function MatchesTab({ myId, onOpen }) {
 
   return (
     <div className="p-5 space-y-2.5">
+      {unlockFor && (
+        <div className="fixed inset-0 bg-black/70 z-40 flex items-center justify-center px-6">
+          <div className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-xs p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <Lock size={16} className="text-[#FF4D6D]" />
+              <h3 className="font-display text-lg">Locked chat</h3>
+            </div>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={pinInput}
+              onChange={(e) => {
+                setPinInput(e.target.value.replace(/\D/g, ""));
+                setPinError("");
+              }}
+              placeholder="4-digit PIN"
+              className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 text-center text-lg tracking-[0.5em] outline-none focus:border-[#FF4D6D]"
+              autoFocus
+            />
+            {pinError && <p className="text-[#FF4D6D] text-xs text-center mt-2">{pinError}</p>}
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => setUnlockFor(null)}
+                className="flex-1 py-2.5 rounded-full border border-white/10 text-[var(--cc-muted)] text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={tryUnlock}
+                disabled={pinInput.length !== 4}
+                className="flex-1 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm disabled:opacity-40"
+              >
+                Unlock
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 mb-1 px-1">
         <Sparkles size={14} className="text-[#FFB84D]" />
         <p className="text-xs text-[var(--cc-muted)]">
           <span className="font-medium text-[var(--cc-text)]">{officialCount}</span> Matches
         </p>
       </div>
-      {matches.map((m) => (
-        <button
-          key={m.id}
-          onClick={() => onOpen(m)}
-          className="w-full flex items-center gap-3 bg-[var(--cc-surface)] rounded-xl p-3.5 text-left border border-white/5"
-        >
-          <div className="w-11 h-11 rounded-full overflow-hidden shrink-0">
-            <Avatar profile={{ name: m.otherName, photos: m.otherPhoto ? [m.otherPhoto] : [] }} textSize="text-lg" />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-medium">{m.otherName}</p>
-            <p className="text-xs text-[var(--cc-dim)]">{m.is_official ? "Matched" : "Chatting"}</p>
-          </div>
-          {m.is_official && <Sparkles size={16} className="text-[#FFB84D]" />}
-        </button>
-      ))}
+      {matches.map((m) => {
+        const displayName = m.nickname || m.otherName;
+        return (
+          <button
+            key={m.id}
+            onClick={() => openChat(m)}
+            className="w-full flex items-center gap-3 bg-[var(--cc-surface)] rounded-xl p-3.5 text-left border border-white/5 relative"
+          >
+            <div className="relative shrink-0">
+              <div className="w-11 h-11 rounded-full overflow-hidden">
+                {m.nickname ? (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#FF4D6D]/30 to-[#5DA9FF]/20">
+                    <span className="font-display text-lg">{m.nickname[0]?.toUpperCase()}</span>
+                  </div>
+                ) : (
+                  <Avatar profile={{ name: m.otherName, photos: m.otherPhoto ? [m.otherPhoto] : [] }} textSize="text-lg" />
+                )}
+              </div>
+              {m.online && (
+                <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-[#4DD4C0] border-2 border-[var(--cc-surface)]" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium truncate">{displayName}</p>
+                {m.pinned && <Pin size={11} className="text-[#FFB84D] shrink-0" />}
+                {m.lockPin && <Lock size={11} className="text-[var(--cc-dim)] shrink-0" />}
+              </div>
+              <p className={`text-xs truncate ${m.unread ? "text-[var(--cc-text)] font-medium" : "text-[var(--cc-dim)]"}`}>
+                {m.lastMsg ? m.lastMsg.content : m.is_official ? "Matched" : "Chatting"}
+              </p>
+            </div>
+            {m.unread && <div className="w-2 h-2 rounded-full bg-[#FF4D6D] shrink-0" />}
+            {m.is_official && !m.unread && <Sparkles size={16} className="text-[#FFB84D] shrink-0" />}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -4296,13 +4429,32 @@ function ChatRoom({ match, myId, onBack }) {
   const [theyCrushedMe, setTheyCrushedMe] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [justMatched, setJustMatched] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showNicknameEdit, setShowNicknameEdit] = useState(false);
+  const [nicknameInput, setNicknameInput] = useState("");
+  const [showLockSetup, setShowLockSetup] = useState(false);
+  const [lockPinInput, setLockPinInput] = useState("");
+  const [unlocked, setUnlocked] = useState(false);
+  const [unlockPinInput, setUnlockPinInput] = useState("");
+  const [unlockError, setUnlockError] = useState("");
   const bottomRef = useRef(null);
 
-  const otherId = matchRow.user1_id === myId ? matchRow.user2_id : matchRow.user1_id;
-  const myConfirmed = matchRow.user1_id === myId ? matchRow.user1_confirmed : matchRow.user2_confirmed;
-  const theirConfirmed = matchRow.user1_id === myId ? matchRow.user2_confirmed : matchRow.user1_confirmed;
+  const isUser1 = matchRow.user1_id === myId;
+  const otherId = isUser1 ? matchRow.user2_id : matchRow.user1_id;
+  const myConfirmed = isUser1 ? matchRow.user1_confirmed : matchRow.user2_confirmed;
+  const myNickname = isUser1 ? matchRow.user1_nickname : matchRow.user2_nickname;
+  const myPinned = isUser1 ? matchRow.user1_pinned : matchRow.user2_pinned;
+  const myLockPin = isUser1 ? matchRow.user1_lock_pin : matchRow.user2_lock_pin;
+  const displayName = myNickname || otherProfile?.name || "Them";
 
   useEffect(() => {
+    setUnlocked(!myLockPin);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!unlocked) return;
     load();
     loadRelationship();
     const channel = supabase
@@ -4310,12 +4462,27 @@ function ChatRoom({ match, myId, onBack }) {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `match_id=eq.${matchRow.id}` },
-        (payload) => setMessages((prev) => [...prev, payload.new])
+        (payload) => {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === payload.new.id)) return prev;
+            return [...prev.filter((m) => !(m._optimistic && m.content === payload.new.content)), payload.new];
+          });
+          if (payload.new.sender_id === otherId) {
+            supabase.from("messages").update({ read_at: new Date().toISOString() }).eq("id", payload.new.id).then(() => {});
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages", filter: `match_id=eq.${matchRow.id}` },
+        (payload) => {
+          setMessages((prev) => prev.map((m) => (m.id === payload.new.id ? payload.new : m)));
+        }
       )
       .subscribe();
     return () => supabase.removeChannel(channel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchRow.id]);
+  }, [matchRow.id, unlocked]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -4328,9 +4495,16 @@ function ChatRoom({ match, myId, onBack }) {
       .eq("match_id", matchRow.id)
       .order("created_at", { ascending: true });
     setMessages(data || []);
-    const { data: p } = await supabase.from("profiles").select("name, photos").eq("id", otherId).maybeSingle();
+    const { data: p } = await supabase.from("profiles").select("name, photos, last_seen").eq("id", otherId).maybeSingle();
     setOtherProfile(p);
     setLoading(false);
+
+    await supabase
+      .from("messages")
+      .update({ read_at: new Date().toISOString() })
+      .eq("match_id", matchRow.id)
+      .eq("sender_id", otherId)
+      .is("read_at", null);
   }
 
   async function loadRelationship() {
@@ -4370,7 +4544,6 @@ function ChatRoom({ match, myId, onBack }) {
       return;
     }
     setConfirming(true);
-    const isUser1 = matchRow.user1_id === myId;
     const payload = isUser1 ? { user1_confirmed: true } : { user2_confirmed: true };
     const { data } = await supabase.from("matches").update(payload).eq("id", matchRow.id).select().maybeSingle();
     let updated = data || { ...matchRow, ...payload };
@@ -4397,19 +4570,136 @@ function ChatRoom({ match, myId, onBack }) {
   async function send() {
     if (!text.trim() || !canSend) return;
     const content = text.trim();
+    const replyId = replyingTo?.id || null;
     setText("");
-    await supabase.from("messages").insert({ match_id: matchRow.id, sender_id: myId, content });
+    setReplyingTo(null);
+
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMsg = {
+      id: tempId,
+      match_id: matchRow.id,
+      sender_id: myId,
+      content,
+      reply_to_id: replyId,
+      created_at: new Date().toISOString(),
+      read_at: null,
+      _optimistic: true,
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+
+    const { data, error } = await supabase
+      .from("messages")
+      .insert({ match_id: matchRow.id, sender_id: myId, content, reply_to_id: replyId })
+      .select()
+      .maybeSingle();
+
+    if (data) {
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? data : m)));
+    } else if (error) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+    }
+  }
+
+  async function saveNickname() {
+    const field = isUser1 ? "user1_nickname" : "user2_nickname";
+    const value = nicknameInput.trim() || null;
+    await supabase.from("matches").update({ [field]: value }).eq("id", matchRow.id);
+    setMatchRow((prev) => ({ ...prev, [field]: value }));
+    setShowNicknameEdit(false);
+  }
+
+  async function togglePin() {
+    const field = isUser1 ? "user1_pinned" : "user2_pinned";
+    if (!myPinned) {
+      const { count } = await supabase
+        .from("matches")
+        .select("*", { count: "exact", head: true })
+        .or(`and(user1_id.eq.${myId},user1_pinned.eq.true),and(user2_id.eq.${myId},user2_pinned.eq.true)`);
+      if ((count ?? 0) >= 2) {
+        alert("You can pin up to 2 chats only.");
+        return;
+      }
+    }
+    const next = !myPinned;
+    await supabase.from("matches").update({ [field]: next }).eq("id", matchRow.id);
+    setMatchRow((prev) => ({ ...prev, [field]: next }));
+  }
+
+  async function setupLock() {
+    if (!/^\d{4}$/.test(lockPinInput)) {
+      alert("Enter a 4-digit PIN.");
+      return;
+    }
+    const { count } = await supabase
+      .from("matches")
+      .select("*", { count: "exact", head: true })
+      .or(`and(user1_id.eq.${myId},user1_lock_pin.not.is.null),and(user2_id.eq.${myId},user2_lock_pin.not.is.null)`);
+    if ((count ?? 0) >= 4) {
+      alert("You can lock up to 4 chats only.");
+      return;
+    }
+    const field = isUser1 ? "user1_lock_pin" : "user2_lock_pin";
+    await supabase.from("matches").update({ [field]: lockPinInput }).eq("id", matchRow.id);
+    setMatchRow((prev) => ({ ...prev, [field]: lockPinInput }));
+    setShowLockSetup(false);
+    setLockPinInput("");
+  }
+
+  async function removeLock() {
+    const field = isUser1 ? "user1_lock_pin" : "user2_lock_pin";
+    await supabase.from("matches").update({ [field]: null }).eq("id", matchRow.id);
+    setMatchRow((prev) => ({ ...prev, [field]: null }));
+  }
+
+  function attemptUnlock() {
+    if (unlockPinInput === myLockPin) {
+      setUnlocked(true);
+      setUnlockError("");
+    } else {
+      setUnlockError("Wrong PIN");
+    }
+  }
+
+  const messageById = {};
+  messages.forEach((m) => (messageById[m.id] = m));
+
+  const isOnline =
+    otherProfile?.last_seen && Date.now() - new Date(otherProfile.last_seen).getTime() < 3 * 60 * 1000;
+
+  if (!unlocked) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center px-8 gap-4">
+        <Lock size={28} className="text-[var(--cc-muted)]" />
+        <p className="text-sm text-[var(--cc-muted)]">This chat is locked</p>
+        <input
+          type="password"
+          inputMode="numeric"
+          maxLength={4}
+          value={unlockPinInput}
+          onChange={(e) => setUnlockPinInput(e.target.value.replace(/\D/g, ""))}
+          placeholder="4-digit PIN"
+          className="w-32 text-center bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-[#FF4D6D] tracking-widest"
+        />
+        {unlockError && <p className="text-[#FF4D6D] text-xs">{unlockError}</p>}
+        <button onClick={attemptUnlock} className="px-6 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm">
+          Unlock
+        </button>
+        <button onClick={onBack} className="text-xs text-[var(--cc-dim)]">
+          Back
+        </button>
+      </div>
+    );
   }
 
   return (
-    <div className="flex flex-col min-h-[70vh]">
+    <div className="flex flex-col h-full">
       {justMatched && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-40 px-6">
           <div className="bg-[var(--cc-surface)] rounded-2xl p-6 text-center border border-[#FF4D6D]/30 max-w-xs">
             <Sparkles size={28} className="text-[#FFB84D] mx-auto mb-2" />
             <h3 className="font-display text-2xl">You matched!</h3>
             <p className="text-sm text-[var(--cc-muted)] mt-2">
-              You and {otherProfile?.name} confirmed each other. It's official.
+              You and {displayName} confirmed each other. It's official.
             </p>
             <button
               onClick={() => setJustMatched(false)}
@@ -4421,11 +4711,92 @@ function ChatRoom({ match, myId, onBack }) {
         </div>
       )}
 
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5">
+      {showNicknameEdit && (
+        <div
+          className="fixed inset-0 bg-black/70 z-40 flex items-center justify-center px-6"
+          onClick={() => setShowNicknameEdit(false)}
+        >
+          <div
+            className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-xs p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-display text-lg mb-1">Chat nickname</h3>
+            <p className="text-[11px] text-[var(--cc-dim)] mb-3">
+              Only you see this — it replaces their name and photo in this chat.
+            </p>
+            <input
+              value={nicknameInput}
+              onChange={(e) => setNicknameInput(e.target.value)}
+              placeholder={otherProfile?.name}
+              className="w-full bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-[#FF4D6D] mb-3"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowNicknameEdit(false)}
+                className="flex-1 py-2.5 rounded-full border border-white/10 text-[var(--cc-muted)] text-sm"
+              >
+                Cancel
+              </button>
+              <button onClick={saveNickname} className="flex-1 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm">
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLockSetup && (
+        <div
+          className="fixed inset-0 bg-black/70 z-40 flex items-center justify-center px-6"
+          onClick={() => setShowLockSetup(false)}
+        >
+          <div
+            className="bg-[var(--cc-bg)] border border-white/10 rounded-2xl w-full max-w-xs p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-display text-lg mb-1">Lock this chat</h3>
+            <p className="text-[11px] text-[var(--cc-dim)] mb-3">Set a 4-digit PIN. Up to 4 chats can be locked.</p>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              value={lockPinInput}
+              onChange={(e) => setLockPinInput(e.target.value.replace(/\D/g, ""))}
+              placeholder="4-digit PIN"
+              className="w-full text-center bg-[var(--cc-surface)] border border-white/10 rounded-xl px-4 py-2.5 outline-none focus:border-[#FF4D6D] tracking-widest mb-3"
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowLockSetup(false)}
+                className="flex-1 py-2.5 rounded-full border border-white/10 text-[var(--cc-muted)] text-sm"
+              >
+                Cancel
+              </button>
+              <button onClick={setupLock} className="flex-1 py-2.5 rounded-full bg-[#FF4D6D] text-white text-sm">
+                Lock
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 shrink-0">
         <button onClick={onBack} className="text-[var(--cc-muted)]">
           <ArrowLeft size={20} />
         </button>
-        <span className="font-display text-lg flex-1">{otherProfile?.name || "Them"}</span>
+        <div className="w-8 h-8 rounded-full overflow-hidden shrink-0">
+          {myNickname ? (
+            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#FF4D6D]/30 to-[#5DA9FF]/20">
+              <span className="font-display text-sm">{myNickname[0]?.toUpperCase()}</span>
+            </div>
+          ) : (
+            <Avatar profile={otherProfile} textSize="text-sm" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-display text-lg truncate leading-tight">{displayName}</p>
+          {isOnline && <p className="text-[10px] text-[#4DD4C0]">Active now</p>}
+        </div>
         <button onClick={toggleCrush} className="p-1">
           <Heart
             size={20}
@@ -4433,17 +4804,65 @@ function ChatRoom({ match, myId, onBack }) {
             fill={myCrushedThem ? "#FF4D6D" : "none"}
           />
         </button>
+        <button onClick={() => setShowMenu((v) => !v)} className="text-[var(--cc-muted)] p-1">
+          <MoreHorizontal size={19} />
+        </button>
       </div>
 
+      {showMenu && (
+        <div className="px-4 py-2 border-b border-white/5 flex flex-wrap gap-2 shrink-0">
+          <button
+            onClick={() => {
+              setNicknameInput(myNickname || "");
+              setShowNicknameEdit(true);
+              setShowMenu(false);
+            }}
+            className="text-xs px-3 py-1.5 rounded-full border border-white/10 text-[var(--cc-muted)]"
+          >
+            {myNickname ? "Edit nickname" : "Set nickname"}
+          </button>
+          <button
+            onClick={() => {
+              togglePin();
+              setShowMenu(false);
+            }}
+            className="text-xs px-3 py-1.5 rounded-full border border-white/10 text-[var(--cc-muted)]"
+          >
+            {myPinned ? "Unpin chat" : "Pin chat"}
+          </button>
+          {myLockPin ? (
+            <button
+              onClick={() => {
+                removeLock();
+                setShowMenu(false);
+              }}
+              className="text-xs px-3 py-1.5 rounded-full border border-white/10 text-[var(--cc-muted)]"
+            >
+              Remove lock
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                setShowLockSetup(true);
+                setShowMenu(false);
+              }}
+              className="text-xs px-3 py-1.5 rounded-full border border-white/10 text-[var(--cc-muted)]"
+            >
+              Lock chat
+            </button>
+          )}
+        </div>
+      )}
+
       {matchRow.is_official ? (
-        <div className="px-4 py-2 bg-[#FFB84D]/10 border-b border-white/5 flex items-center gap-2">
+        <div className="px-4 py-2 bg-[#FFB84D]/10 border-b border-white/5 flex items-center gap-2 shrink-0">
           <Sparkles size={13} className="text-[#FFB84D]" />
           <span className="text-[11px] text-[#FFB84D]">Matched</span>
         </div>
       ) : (
-        <div className="px-4 py-2.5 bg-[var(--cc-surface)] border-b border-white/5 flex items-center justify-between gap-3">
+        <div className="px-4 py-2.5 bg-[var(--cc-surface)] border-b border-white/5 flex items-center justify-between gap-3 shrink-0">
           <p className="text-[11px] text-[var(--cc-muted)]">
-            {myConfirmed ? "Waiting for them to confirm..." : "Both crush + confirm to make it official."}
+            {myConfirmed ? "Waiting for them to confirm..." : "Confirm to make it official."}
           </p>
           <button
             onClick={confirmMatch}
@@ -4455,33 +4874,81 @@ function ChatRoom({ match, myId, onBack }) {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+      <div className="flex-1 overflow-y-auto p-4 flex flex-col justify-end gap-2.5">
         {loading && <p className="text-xs text-[var(--cc-dim)] text-center">loading chat...</p>}
         {!loading && messages.length === 0 && (
-          <p className="text-xs text-[var(--cc-dim)] text-center mt-6">
+          <p className="text-xs text-[var(--cc-dim)] text-center mb-2">
             No messages yet. Break the ice — say something real.
           </p>
         )}
-        {messages.map((m) => (
-          <div key={m.id} className={`flex ${m.sender_id === myId ? "justify-end" : "justify-start"}`}>
-            <div
-              className={`max-w-[75%] px-3.5 py-2 rounded-2xl text-sm ${
-                m.sender_id === myId ? "bg-[#FF4D6D] text-white" : "bg-[var(--cc-surface)] text-[var(--cc-text)]"
-              }`}
-            >
-              {m.content}
+        {messages.map((m) => {
+          const repliedMsg = m.reply_to_id ? messageById[m.reply_to_id] : null;
+          const isMine = m.sender_id === myId;
+          return (
+            <div key={m.id} className={`flex flex-col ${isMine ? "items-end" : "items-start"} group`}>
+              {repliedMsg && (
+                <div
+                  className={`max-w-[75%] px-3 py-1.5 rounded-t-xl text-[11px] opacity-70 border-l-2 ${
+                    isMine ? "border-white/40 bg-[#FF4D6D]/40" : "border-[#FF4D6D] bg-[var(--cc-surface)]"
+                  }`}
+                >
+                  {repliedMsg.content.slice(0, 60)}
+                </div>
+              )}
+              <div className="flex items-end gap-1.5">
+                {!isMine && (
+                  <button
+                    onClick={() => setReplyingTo(m)}
+                    className="opacity-0 group-hover:opacity-100 text-[var(--cc-dim)] transition-opacity"
+                  >
+                    <Reply size={13} />
+                  </button>
+                )}
+                <div
+                  className={`max-w-[75%] px-3.5 py-2 text-sm ${
+                    isMine
+                      ? "bg-[#FF4D6D] text-white rounded-2xl rounded-tr-sm"
+                      : "bg-[var(--cc-surface)] text-[var(--cc-text)] rounded-2xl rounded-tl-sm"
+                  }`}
+                >
+                  {m.content}
+                </div>
+                {isMine && (
+                  <button
+                    onClick={() => setReplyingTo(m)}
+                    className="opacity-0 group-hover:opacity-100 text-[var(--cc-dim)] transition-opacity"
+                  >
+                    <Reply size={13} />
+                  </button>
+                )}
+              </div>
+              {isMine && (
+                <span className="text-[9px] text-[var(--cc-dim)] mt-0.5 mr-1">{m.read_at ? "Seen" : "Sent"}</span>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={bottomRef} />
       </div>
 
       {!canSend && (
-        <p className="text-[11px] text-[var(--cc-dim)] text-center pb-1.5">
+        <p className="text-[11px] text-[var(--cc-dim)] text-center pb-1.5 shrink-0">
           Wait for them to reply before sending another message.
         </p>
       )}
-      <div className="p-3 border-t border-white/5 flex gap-2">
+
+      {replyingTo && (
+        <div className="flex items-center justify-between px-4 py-2 bg-[var(--cc-surface)] border-t border-white/5 shrink-0">
+          <p className="text-[11px] text-[var(--cc-muted)] truncate flex-1">
+            Replying to: {replyingTo.content.slice(0, 40)}
+          </p>
+          <button onClick={() => setReplyingTo(null)} className="text-[var(--cc-dim)] ml-2">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      <div className="p-3 border-t border-white/5 flex gap-2 shrink-0">
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
